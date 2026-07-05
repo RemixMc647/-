@@ -66,4 +66,58 @@ REMIX-NEXUS — LOGIN LOGIC
       submitBtn.textContent = 'Log in';
     }
   });
+
+  // ---- FORGOT PASSWORD ----
+  const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+  const forgotPasswordBox = document.getElementById('forgotPasswordBox');
+  const forgotEmailInput = document.getElementById('forgotEmail');
+  const forgotSubmitBtn = document.getElementById('forgotSubmitBtn');
+  const forgotMessage = document.getElementById('forgot-message');
+
+  if (forgotPasswordLink && forgotPasswordBox) {
+    forgotPasswordLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const isHidden = forgotPasswordBox.style.display === 'none';
+      forgotPasswordBox.style.display = isHidden ? 'block' : 'none';
+      if (isHidden) forgotEmailInput.focus();
+    });
+  }
+
+  if (forgotSubmitBtn) {
+    forgotSubmitBtn.addEventListener('click', async () => {
+      const email = forgotEmailInput.value.trim();
+
+      if (!email) {
+        forgotMessage.textContent = 'Please enter your email address.';
+        forgotMessage.style.color = '#ff5b5b';
+        return;
+      }
+
+      forgotSubmitBtn.disabled = true;
+      forgotSubmitBtn.textContent = 'Sending…';
+      forgotMessage.textContent = '';
+
+      try {
+        const res = await fetch('https://remix-nexus-production.up.railway.app/api/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+
+        const data = await res.json();
+
+        forgotMessage.textContent = data.message || 'If an account with that email exists, a reset link has been sent.';
+        forgotMessage.style.color = '#00e676';
+        forgotEmailInput.value = '';
+
+      } catch (err) {
+        console.error('Forgot password error:', err);
+        forgotMessage.textContent = 'Could not reach the server. Please try again in a moment.';
+        forgotMessage.style.color = '#ff5b5b';
+      } finally {
+        forgotSubmitBtn.disabled = false;
+        forgotSubmitBtn.textContent = 'Send reset link';
+      }
+    });
+  }
 })();
