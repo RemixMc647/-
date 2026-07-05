@@ -16,6 +16,13 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const crypto = require('crypto');
+
+// nodemailer is optional — if it isn't installed, or EMAIL_USER/EMAIL_PASS
+// aren't set, forgot-password still works, it just logs the reset link to
+// the server console instead of emailing it (handy for local testing).
+let nodemailer = null;
+try { nodemailer = require('nodemailer'); } catch (err) { /* not installed — that's fine */ }
 
 const app = express();
 
@@ -26,6 +33,21 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // Set this to your static site's real URL once deployed
 // (e.g. https://remix-nexus.onrender.com). Using '*' works for testing.
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
+// Set this to your deployed front-end URL so reset-password emails link to
+// the right place (e.g. https://remix-nexus.example.com). Falls back to
+// FRONTEND_ORIGIN, then to a relative link if neither is set.
+const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL || (FRONTEND_ORIGIN !== '*' ? FRONTEND_ORIGIN : '');
+
+let mailTransporter = null;
+if (nodemailer && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  mailTransporter = nodemailer.createTransport({
+    service: process.env.EMAIL_SERVICE || 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    }
+  });
+}
 
 if (!MONGODB_URI) {
   console.warn('⚠️  MONGODB_URI is not set. Signup/login/profile will not work until you add it to your .env file.');
@@ -69,7 +91,9 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true },
   avatar: { type: String, default: '🎮' },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  resetPasswordTokenHash: { type: String, default: null },
+  resetPasswordExpires: { type: Date, default: null }
 });
 
 const User = mongoose.model('User', userSchema);
@@ -243,6 +267,154 @@ app.put('/api/me/avatar', dbGuard, authMiddleware, async (req, res) => {
 // Expose the allowed avatar list so the front-end never hardcodes it twice
 app.get('/api/avatar-options', (req, res) => {
   res.json({ options: AVATAR_OPTIONS });
+});
+
+// UPDATE USERNAME (protected)
+app.put('/api/me/username', dbGuard, authMiddleware, async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username || username.trim().length < 3) {
+      return res.status(400).json({ error: 'Username must be at least 3 characters.' });
+    }
+
+    const trimmed = username.trim();
+
+    const existing = await User.findOne({ username: trimmed, _id: { $ne: req.user.id } });
+    if (existing) {
+      return res.status(409).json({ error: 'That username is already taken.' });
+    }
+
+    const user = await User.findByIdAndUpdate(req.user.id, { username: trimmed }, { new: true });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    res.json({ user: publicUser(user) });
+  } catch (err) {
+    console.error('Update username error:', err);
+    res.status(500).json({ error: 'Something went wrong.' });
+  }
+});
+
+// UPDATE PASSWORD (protected — requires current password)
+app.put('/api/me/password', dbGuard, authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new password are both required.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const passwordMatches = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!passwordMatches) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update password error:', err);
+    res.status(500).json({ error: 'Something went wrong.' });
+  }
+});
+
+// FORGOT PASSWORD — generates a one-hour reset token. Always returns the
+// same generic message, whether or not the email is registered, so this
+// endpoint can't be used to check which emails have accounts.
+app.post('/api/forgot-password', dbGuard, async (req, res) => {
+  const genericMessage = 'If an account with that email exists, a reset link has been sent.';
+
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required.' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res.json({ message: genericMessage });
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    user.resetPasswordTokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+    await user.save();
+
+    const resetUrl = `${PUBLIC_SITE_URL}/reset-password.html?token=${rawToken}`;
+
+    if (mailTransporter) {
+      await mailTransporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: user.email,
+        subject: '𝕽𝖊𝖒𝖎𝖝 𝕹𝖊𝖝𝖚𝖘 — Reset your password',
+        html: `<p>Hi ${user.username},</p>
+               <p>Click the link below to reset your password. This link expires in 1 hour.</p>
+               <p><a href="${resetUrl}">${resetUrl}</a></p>
+               <p>If you didn't request this, you can safely ignore this email.</p>`
+      });
+    } else {
+      // No email service configured yet — log the link so the flow is
+      // still fully testable during development.
+      console.log(`🔑 Password reset requested for ${user.email}. Reset link: ${resetUrl}`);
+    }
+
+    res.json({ message: genericMessage });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    // Still return the generic message so we don't leak account existence,
+    // but log the real error for debugging.
+    res.json({ message: genericMessage });
+  }
+});
+
+// RESET PASSWORD — consumes the token generated above
+app.post('/api/reset-password', dbGuard, async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'A reset token and new password are both required.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await User.findOne({
+      resetPasswordTokenHash: tokenHash,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.resetPasswordTokenHash = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    res.json({ message: 'Password updated successfully.' });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ error: 'Something went wrong.' });
+  }
 });
 
 // ---- SOCKET.IO CHAT ----
