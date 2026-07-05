@@ -2,7 +2,7 @@
 {
   "name": "Remix Nexus",
   "short_name": "Remix Nexus",
-  "start_url": "/Login.html",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
