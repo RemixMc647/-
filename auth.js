@@ -1,5 +1,5 @@
 /*==============================
-REMIXMC — SHARED AUTH HELPER
+REMIX-NEXUS — SHARED AUTH HELPER
 Loaded on every page. Keeps the logged-in
 user's token/info in localStorage and gives
 every page a simple, consistent way to read it.
@@ -43,7 +43,7 @@ const AUTH = {
     if (!token) return null;
 
     try {
-      const res = await fetch(BACKEND_URL + '/api/me', {
+      const res = await fetch('https://remix-nexus-production.up.railway.app/api/me', {
         headers: { Authorization: 'Bearer ' + token }
       });
 

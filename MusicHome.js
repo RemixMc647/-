@@ -1,5 +1,5 @@
 /*==============================
-REMIXMC — HOME PAGE
+REMIX-NEXUS — HOME PAGE
 Newsletter subscribe (Mailchimp)
 ==============================*/
 

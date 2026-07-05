@@ -1,5 +1,5 @@
 /*==============================
-REMIXMC — PROFILE LOGIC
+REMIX-NEXUS — PROFILE LOGIC
 Shows the real account info (username, email, join date,
 avatar) for whoever signed up / logged in, straight from
 the database via /api/me.
@@ -41,7 +41,7 @@ function renderUser(user){
 
 async function loadAvatarPicker(currentAvatar){
   try {
-    const res = await fetch(BACKEND_URL + '/api/avatar-options');
+    const res = await fetch('https://remix-nexus-production.up.railway.app/api/avatar-options');
     const data = await res.json();
     const options = data.options || [];
 
@@ -62,7 +62,7 @@ async function selectAvatar(emoji){
   avatarMessage.style.color = '#bdbdbd';
 
   try {
-    const res = await fetch(BACKEND_URL + '/api/me/avatar', {
+    const res = await fetch('https://remix-nexus-production.up.railway.app/api/me/avatar', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',

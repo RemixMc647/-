@@ -1,5 +1,5 @@
 /* ===============================
-   REMIXMC — LATEST VIDEOS
+   REMIX-NEXUS — LATEST VIDEOS
    Add your own video IDs below (the part after "v=" in a
    YouTube URL). No API key needed for this list — swap it
    for a live YouTube Data API v3 fetch later if you want the
