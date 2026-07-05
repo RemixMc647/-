@@ -18,7 +18,7 @@ function getRooms(){
 }
 
 function saveRooms(rooms){
-  localStorage.setItem('remixmcRooms', JSON.stringify(rooms));
+  localStorage.setItem('remixnexusRooms', JSON.stringify(rooms));
 }
 
 // Local per-room message cache, used only so the sidebar can show a
@@ -31,7 +31,7 @@ function getMessages(roomId){
 }
 
 function saveMessages(roomId, messages){
-  localStorage.setItem('remixmcMessages:' + roomId, JSON.stringify(messages));
+  localStorage.setItem('remixnexusMessages:' + roomId, JSON.stringify(messages));
 }
 
 // Prefer the logged-in account's username. Otherwise, remember a
@@ -40,10 +40,10 @@ function getUsername(){
   const user = window.AUTH ? AUTH.getUser() : null;
   if (user && user.username) return user.username;
 
-  let guest = localStorage.getItem('remixmcGuestName');
+  let guest = localStorage.getItem('remixnexusGuestName');
   if (!guest) {
     guest = 'Guest' + Math.floor(Math.random() * 10000);
-    localStorage.setItem('remixmcGuestName', guest);
+    localStorage.setItem('remixnexusGuestName', guest);
   }
   return guest;
 }
