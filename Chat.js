@@ -1,5 +1,5 @@
 /*==============================
-REMIXMC — CHAT LOGIC
+REMIX-NEXUS — CHAT LOGIC
 Talks to the same Express + Socket.io server that serves
 this page (same-origin, so no URL config needed).
 ==============================*/
@@ -11,27 +11,27 @@ const socket = window.io ? io(BACKEND_URL) : null;
 ----------------------------------------------------------- */
 function getRooms(){
   try {
-    const raw = localStorage.getItem('remixmcRooms');
+    const raw = localStorage.getItem('remix-nexusRooms');
     const stored = raw ? JSON.parse(raw) : null;
     return Array.isArray(stored) && stored.length ? stored : DEFAULT_ROOMS;
   } catch { return DEFAULT_ROOMS; }
 }
 
 function saveRooms(rooms){
-  localStorage.setItem('remixnexusRooms', JSON.stringify(rooms));
+  localStorage.setItem('remix-nexusRooms', JSON.stringify(rooms));
 }
 
 // Local per-room message cache, used only so the sidebar can show a
 // message count and so switching rooms feels instant before history arrives.
 function getMessages(roomId){
   try {
-    const raw = localStorage.getItem('remixmcMessages:' + roomId);
+    const raw = localStorage.getItem('remix-nexusMessages:' + roomId);
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
 
 function saveMessages(roomId, messages){
-  localStorage.setItem('remixnexusMessages:' + roomId, JSON.stringify(messages));
+  localStorage.setItem('remix-nexusMessages:' + roomId, JSON.stringify(messages));
 }
 
 // Prefer the logged-in account's username. Otherwise, remember a
@@ -40,10 +40,10 @@ function getUsername(){
   const user = window.AUTH ? AUTH.getUser() : null;
   if (user && user.username) return user.username;
 
-  let guest = localStorage.getItem('remixnexusGuestName');
+  let guest = localStorage.getItem('remix-nexusGuestName');
   if (!guest) {
     guest = 'Guest' + Math.floor(Math.random() * 10000);
-    localStorage.setItem('remixnexusGuestName', guest);
+    localStorage.setItem('remix-nexusGuestName', guest);
   }
   return guest;
 }
