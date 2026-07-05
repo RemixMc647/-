@@ -1,5 +1,5 @@
 // ===============================================================
-// REMIXMC — UNIFIED BACKEND
+// REMIX-NEXUS — UNIFIED BACKEND
 // One server that:
 //   1) Serves the whole front-end (everything in /public)
 //   2) Handles real signup / login / profile via MongoDB + JWT
@@ -24,7 +24,7 @@ const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const JWT_SECRET = process.env.JWT_SECRET;
 // Set this to your static site's real URL once deployed
-// (e.g. https://remixmc.onrender.com). Using '*' works for testing.
+// (e.g. https://remix-nexus.onrender.com). Using '*' works for testing.
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
 
 if (!MONGODB_URI) {
