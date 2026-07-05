@@ -1,5 +1,5 @@
 /*==============================
-REMIXMC — PROFILE LOGIC
+REMIX-NEXUS — PROFILE LOGIC
 Shows the real account info (username, email, join date,
 avatar) for whoever signed up / logged in, straight from
 the database via /api/me.
