@@ -1,5 +1,5 @@
 /*==============================
-REMIXMC — SEARCH LOGIC
+REMIX-NEXUS — SEARCH LOGIC
 Filters the shared room list (DEFAULT_ROOMS from rooms.js)
 as the person types.
 ==============================*/
