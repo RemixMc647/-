@@ -1,13 +1,13 @@
 
 {
-  "name": "Remix Nexus",
-  "short_name": "Remix Nexus",
+  "name": "𝕽𝖊𝖒𝖎𝖝 𝕹𝖊𝖝𝖚𝖘",
+  "short_name": "𝕽𝖊𝖒𝖎𝖝 𝕹𝖊𝖝𝖚𝖘",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
-    { "src": "/dcf7334e-f75d-4688-a500-ea7895bc4f71.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "dcf7334e-f75d-4688-a500-ea7895bc4f71.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "9e5c20c1-88a9-4703-b394-68da16eda7d1.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "9e5c20c1-88a9-4703-b394-68da16eda7d1.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
