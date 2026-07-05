@@ -1,5 +1,5 @@
 /*==============================
-REMIXMC — SIGNUP LOGIC
+REMIX-NEXUS — SIGNUP LOGIC
 ==============================*/
 
 (function () {
