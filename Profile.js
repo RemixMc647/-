@@ -19,6 +19,15 @@ const avatarPicker = document.getElementById('avatarPicker');
 const avatarMessage = document.getElementById('avatarMessage');
 const logoutBtn = document.getElementById('logoutBtn');
 
+const usernameForm = document.getElementById('usernameForm');
+const newUsernameInput = document.getElementById('newUsernameInput');
+const usernameMessage = document.getElementById('usernameMessage');
+
+const passwordForm = document.getElementById('passwordForm');
+const currentPasswordInput = document.getElementById('currentPasswordInput');
+const newPasswordInput = document.getElementById('newPasswordInput');
+const passwordMessage = document.getElementById('passwordMessage');
+
 function showState(state){
   loadingEl.style.display = state === 'loading' ? 'block' : 'none';
   loggedOutEl.style.display = state === 'loggedout' ? 'block' : 'none';
@@ -93,6 +102,102 @@ async function selectAvatar(emoji){
     avatarMessage.style.color = '#ff5b5b';
   }
 }
+
+usernameForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const newUsername = newUsernameInput.value.trim();
+  const submitBtn = usernameForm.querySelector('button[type="submit"]');
+
+  if (newUsername.length < 3) {
+    usernameMessage.textContent = 'Username must be at least 3 characters.';
+    usernameMessage.style.color = '#ff5b5b';
+    return;
+  }
+
+  submitBtn.disabled = true;
+  usernameMessage.textContent = 'Saving…';
+  usernameMessage.style.color = '#bdbdbd';
+
+  try {
+    const res = await fetch('https://remix-nexus-production.up.railway.app/api/me/username', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + AUTH.getToken()
+      },
+      body: JSON.stringify({ username: newUsername })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      usernameMessage.textContent = data.error || 'Could not update username.';
+      usernameMessage.style.color = '#ff5b5b';
+      return;
+    }
+
+    localStorage.setItem(AUTH.USER_KEY, JSON.stringify(data.user));
+    renderUser(data.user);
+    newUsernameInput.value = '';
+
+    usernameMessage.textContent = 'Username updated!';
+    usernameMessage.style.color = '#00e676';
+  } catch (err) {
+    usernameMessage.textContent = 'Could not reach the server.';
+    usernameMessage.style.color = '#ff5b5b';
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+passwordForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const currentPassword = currentPasswordInput.value;
+  const newPassword = newPasswordInput.value;
+  const submitBtn = passwordForm.querySelector('button[type="submit"]');
+
+  if (newPassword.length < 6) {
+    passwordMessage.textContent = 'New password must be at least 6 characters.';
+    passwordMessage.style.color = '#ff5b5b';
+    return;
+  }
+
+  submitBtn.disabled = true;
+  passwordMessage.textContent = 'Saving…';
+  passwordMessage.style.color = '#bdbdbd';
+
+  try {
+    const res = await fetch('https://remix-nexus-production.up.railway.app/api/me/password', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + AUTH.getToken()
+      },
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      passwordMessage.textContent = data.error || 'Could not update password.';
+      passwordMessage.style.color = '#ff5b5b';
+      return;
+    }
+
+    currentPasswordInput.value = '';
+    newPasswordInput.value = '';
+
+    passwordMessage.textContent = 'Password updated!';
+    passwordMessage.style.color = '#00e676';
+  } catch (err) {
+    passwordMessage.textContent = 'Could not reach the server.';
+    passwordMessage.style.color = '#ff5b5b';
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
 
 logoutBtn.addEventListener('click', () => {
   AUTH.logout();
