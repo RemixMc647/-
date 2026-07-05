@@ -83,6 +83,26 @@ const io = new Server(server, {
   }
 });
 
+// Verify the JWT (if the client sent one) BEFORE the connection completes.
+// This is what lets us trust socket.userId / socket.username later instead
+// of trusting whatever "author" name the client claims to be.
+io.use((socket, next) => {
+  const token = socket.handshake.auth && socket.handshake.auth.token;
+
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      socket.userId = decoded.id;
+      socket.username = decoded.username;
+    } catch (err) {
+      // Invalid/expired token — still let them connect as a guest rather
+      // than hard-failing, they just won't have a verified identity.
+    }
+  }
+
+  next();
+});
+
 // ---- USER MODEL ----
 const AVATAR_OPTIONS = ['🎮', '🕹️', '👾', '🧱', '🚀', '⚔️', '🔥', '🏆', '🎯', '🐉'];
 
@@ -97,6 +117,23 @@ const userSchema = new mongoose.Schema({
 });
 
 const User = mongoose.model('User', userSchema);
+
+// ---- DIRECT MESSAGE MODEL ----
+// `participants` is always the two user IDs sorted alphabetically, so a
+// single query finds the whole conversation regardless of who sent what.
+const dmSchema = new mongoose.Schema({
+  participants: { type: [String], required: true, index: true },
+  fromUserId: { type: String, required: true },
+  toUserId: { type: String, required: true },
+  text: { type: String, required: true },
+  time: { type: Date, default: Date.now }
+});
+
+const DirectMessage = mongoose.model('DirectMessage', dmSchema);
+
+function conversationKey(idA, idB) {
+  return [String(idA), String(idB)].sort();
+}
 
 // ---- HELPERS ----
 function createToken(user) {
@@ -417,17 +454,79 @@ app.post('/api/reset-password', dbGuard, async (req, res) => {
   }
 });
 
+// CONTACTS — other people you've shared a room with, based on chat activity
+// since this server last restarted (room history itself is in-memory only,
+// same as the existing chat system, so this list resets on redeploy too).
+app.get('/api/contacts', dbGuard, authMiddleware, async (req, res) => {
+  try {
+    const myId = String(req.user.id);
+    const contactIds = new Set();
+
+    for (const participants of roomParticipants.values()) {
+      if (participants.has(myId)) {
+        participants.forEach((id) => {
+          if (id !== myId) contactIds.add(id);
+        });
+      }
+    }
+
+    const users = await User.find({ _id: { $in: Array.from(contactIds) } });
+    res.json({ contacts: users.map(publicUser) });
+  } catch (err) {
+    console.error('Get contacts error:', err);
+    res.status(500).json({ error: 'Something went wrong.' });
+  }
+});
+
+// DM HISTORY between the logged-in user and another user
+app.get('/api/dm/:userId', dbGuard, authMiddleware, async (req, res) => {
+  try {
+    const otherId = req.params.userId;
+    const key = conversationKey(req.user.id, otherId);
+
+    const [otherUser, messages] = await Promise.all([
+      User.findById(otherId),
+      DirectMessage.find({ participants: key }).sort({ time: 1 }).limit(200)
+    ]);
+
+    if (!otherUser) {
+      return res.status(404).json({ error: 'That user could not be found.' });
+    }
+
+    res.json({ user: publicUser(otherUser), messages });
+  } catch (err) {
+    console.error('Get DM history error:', err);
+    res.status(500).json({ error: 'Something went wrong.' });
+  }
+});
+
 // ---- SOCKET.IO CHAT ----
 const MAX_HISTORY_PER_ROOM = 200;
-const roomHistory = new Map(); // roomId -> [{ author, text, time }]
+const roomHistory = new Map(); // roomId -> [{ id, author, authorId, text, time, replyTo }]
+const roomParticipants = new Map(); // roomId -> Set of userId (for contacts)
 
 function getHistory(roomId) {
   if (!roomHistory.has(roomId)) roomHistory.set(roomId, []);
   return roomHistory.get(roomId);
 }
 
+function trackRoomParticipant(roomId, userId) {
+  if (!roomParticipants.has(roomId)) roomParticipants.set(roomId, new Set());
+  roomParticipants.get(roomId).add(String(userId));
+}
+
+function makeMessageId() {
+  return crypto.randomBytes(12).toString('hex');
+}
+
 io.on('connection', (socket) => {
   let currentRoom = null;
+
+  // Authenticated users get a personal room so DMs can reach every tab/
+  // device they have open, by user ID rather than by socket ID.
+  if (socket.userId) {
+    socket.join('user:' + socket.userId);
+  }
 
   socket.on('chat:join', ({ room }) => {
     if (!room || typeof room !== 'string') return;
@@ -442,17 +541,71 @@ io.on('connection', (socket) => {
   socket.on('chat:message', ({ room, message }) => {
     if (!room || !message || typeof message.text !== 'string' || !message.text.trim()) return;
 
+    // If the socket has a verified identity (logged in), that identity
+    // always wins over whatever "author" name the client sent — this is
+    // what stops one person from typing a message that looks like it came
+    // from somebody else's account.
+    const author = socket.username
+      ? socket.username
+      : String(message.author || 'Guest').slice(0, 40);
+
+    const replyTo = message.replyTo && typeof message.replyTo === 'object'
+      ? {
+          id: String(message.replyTo.id || '').slice(0, 60),
+          author: String(message.replyTo.author || '').slice(0, 40),
+          text: String(message.replyTo.text || '').slice(0, 200)
+        }
+      : null;
+
     const clean = {
-      author: String(message.author || 'Guest').slice(0, 40),
+      id: typeof message.id === 'string' && message.id ? message.id.slice(0, 60) : makeMessageId(),
+      author,
+      authorId: socket.userId || null,
       text: String(message.text).trim().slice(0, 500),
       time: Date.now(),
+      replyTo
     };
 
     const history = getHistory(room);
     history.push(clean);
     if (history.length > MAX_HISTORY_PER_ROOM) history.shift();
 
+    if (clean.authorId) {
+      trackRoomParticipant(room, clean.authorId);
+    }
+
     io.to(room).emit('chat:message', { room, message: clean });
+  });
+
+  // DIRECT MESSAGES — only available to logged-in users, since a guest
+  // has no persistent account for anyone to reply back to.
+  socket.on('dm:message', async ({ toUserId, text }) => {
+    if (!socket.userId) return;
+    if (!toUserId || typeof text !== 'string' || !text.trim()) return;
+
+    try {
+      const key = conversationKey(socket.userId, toUserId);
+
+      const doc = await DirectMessage.create({
+        participants: key,
+        fromUserId: String(socket.userId),
+        toUserId: String(toUserId),
+        text: text.trim().slice(0, 1000)
+      });
+
+      const payload = {
+        id: doc._id,
+        fromUserId: doc.fromUserId,
+        toUserId: doc.toUserId,
+        text: doc.text,
+        time: doc.time
+      };
+
+      io.to('user:' + doc.toUserId).emit('dm:message', payload);
+      io.to('user:' + doc.fromUserId).emit('dm:message', payload); // other tabs of the sender
+    } catch (err) {
+      console.error('DM send error:', err);
+    }
   });
 
   socket.on('disconnect', () => {
