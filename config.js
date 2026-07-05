@@ -8,4 +8,9 @@ project is live. Every page loads this file first.
 3. Paste that exact URL below (no trailing slash).
 ==============================*/
 
-const BACKEND_URL = 'https://YOUR-GLITCH-PROJECT.glitch.me';
+// Backend used by all pages for /api calls and Socket.io
+const BACKEND_URL = 'https://remix-nexus-production.up.railway.app';
+
+// Frontend origin used by backend CORS (some deployments also embed this into static pages)
+// If your backend reads FRONTEND_ORIGIN from environment variables, you may not need this value.
+const FRONTEND_URL = 'https://atremix-nexus-2vj3.onrender.com';
