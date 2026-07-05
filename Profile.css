@@ -143,6 +143,63 @@
     box-shadow:0 0 20px rgba(0,102,255,.5);
 }
 
+.account-settings-section{
+    text-align:left;
+    margin-bottom:24px;
+}
+
+.account-settings-section h3{
+    font-size:16px;
+    margin-bottom:14px;
+    color:#dcdcdc;
+}
+
+.inline-form{
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+}
+
+.inline-form input{
+    flex:1;
+    min-width:180px;
+    height:48px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.1);
+    background:rgba(255,255,255,.04);
+    color:#fff;
+    padding:0 16px;
+    font-size:14px;
+}
+
+.inline-form input:focus{
+    outline:none;
+    border-color:rgba(0,102,255,.6);
+}
+
+.save-btn{
+    height:48px;
+    padding:0 22px;
+    border-radius:14px;
+    border:2px solid rgba(0,102,255,.5);
+    background:rgba(0,102,255,.15);
+    color:#7da9ff;
+    font-weight:700;
+    font-size:14px;
+    cursor:pointer;
+    transition:.2s;
+    white-space:nowrap;
+}
+
+.save-btn:hover{
+    background:rgba(0,102,255,.3);
+}
+
+.save-btn:disabled{
+    opacity:.6;
+    cursor:not-allowed;
+}
+
 .logout-btn{
     width:100%;
     height:52px;
