@@ -85,6 +85,25 @@
       <p id="avatarMessage" class="message"></p>
     </div>
 
+    <div class="account-settings-section">
+      <h3>Change Username</h3>
+      <form id="usernameForm" class="inline-form">
+        <input type="text" id="newUsernameInput" placeholder="New username" minlength="3" required>
+        <button type="submit" class="save-btn">Update Username</button>
+      </form>
+      <p id="usernameMessage" class="message"></p>
+    </div>
+
+    <div class="account-settings-section">
+      <h3>Change Password</h3>
+      <form id="passwordForm" class="inline-form">
+        <input type="password" id="currentPasswordInput" placeholder="Current password" required>
+        <input type="password" id="newPasswordInput" placeholder="New password (min 6 characters)" minlength="6" required>
+        <button type="submit" class="save-btn">Update Password</button>
+      </form>
+      <p id="passwordMessage" class="message"></p>
+    </div>
+
     <button id="logoutBtn" class="logout-btn">Log Out</button>
 
   </div>
