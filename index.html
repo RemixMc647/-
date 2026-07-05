@@ -51,6 +51,21 @@
           <a class="secondary-link" href="./Signup.html">Create an account</a>
         </div>
       </form>
+
+      <p style="text-align:center; margin-top:14px;">
+        <a href="#" id="forgotPasswordLink" class="secondary-link">Forgot password?</a>
+      </p>
+
+      <div id="forgotPasswordBox" style="display:none; margin-top:16px;">
+        <div class="field">
+          <label for="forgotEmail">Enter your email</label>
+          <input id="forgotEmail" name="forgotEmail" type="email" placeholder="you@example.com">
+        </div>
+        <div class="actions">
+          <button class="primary" type="button" id="forgotSubmitBtn">Send reset link</button>
+        </div>
+        <div id="forgot-message" class="message" aria-live="polite"></div>
+      </div>
     </div>
 
     <p style="margin-top:18px; opacity:.8; font-size:14px; text-align:center;">
