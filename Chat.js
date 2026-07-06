@@ -178,16 +178,23 @@ function renderMessages(){
          </div>`
       : '';
 
-    const bodyBlock = (m.audio && m.audio.data)
-      ? `<div class="voice-note">
+    let bodyBlock;
+    if (m.media && m.media.data){
+      bodyBlock = m.media.type === 'video'
+        ? `<div class="media-note"><video controls preload="metadata" src="${m.media.data}"></video></div>`
+        : `<div class="media-note"><img src="${m.media.data}" alt="Shared image" loading="lazy"></div>`;
+    } else if (m.audio && m.audio.data){
+      bodyBlock = `<div class="voice-note">
            <audio controls preload="metadata" src="${m.audio.data}"></audio>
            <span class="voice-note-duration">${formatDuration(m.audio.duration)}</span>
-         </div>`
-      : escapeHTML(m.text);
+         </div>`;
+    } else {
+      bodyBlock = escapeHTML(m.text);
+    }
 
-    const replyText = m.text || (m.audio ? '🎤 Voice note' : '');
+    const replyText = m.text || (m.audio ? '🎤 Voice note' : (m.media ? (m.media.type === 'video' ? '🎬 Video' : '🖼️ Photo') : ''));
 
-    const canEdit = canDelete && !m.audio; // voice notes can't be edited, only text
+    const canEdit = canDelete && !m.audio && !m.media; // voice notes & media can't be edited, only text
     const isEditingThis = editingId === m.id;
 
     const deleteBlock = canDelete
@@ -686,6 +693,70 @@ voiceBtn.addEventListener('click', () => {
 
 stopRecordingBtn.addEventListener('click', () => stopRecording(false));
 cancelRecordingBtn.addEventListener('click', () => stopRecording(true));
+
+/* -----------------------------------------------------------
+   PHOTOS & VIDEOS — pick a file, send as a data URL (same
+   approach as voice notes, just a bigger size cap for video).
+----------------------------------------------------------- */
+const attachBtn = document.getElementById('attachBtn');
+const mediaInput = document.getElementById('mediaInput');
+
+const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;  // ~4.5MB of actual image
+const MAX_VIDEO_DATA_URL_LENGTH = 16_000_000; // ~12MB of actual video — keep clips short
+
+async function sendMedia(file){
+  if (!file) return;
+
+  const isVideo = file.type.startsWith('video/');
+  const isImage = file.type.startsWith('image/');
+  if (!isVideo && !isImage){
+    alert('Only photos and videos can be sent this way.');
+    return;
+  }
+
+  const dataUrl = await blobToDataURL(file);
+  const limit = isVideo ? MAX_VIDEO_DATA_URL_LENGTH : MAX_IMAGE_DATA_URL_LENGTH;
+
+  if (dataUrl.length > limit){
+    alert(isVideo
+      ? 'That video is too large to send — try a shorter clip or lower resolution.'
+      : 'That image is too large to send — try a smaller file.');
+    return;
+  }
+
+  const message = {
+    id: generateId(),
+    author: getUsername(),
+    text: '',
+    media: { type: isVideo ? 'video' : 'image', data: dataUrl },
+    time: Date.now(),
+    replyTo: replyingTo ? { id: replyingTo.id, author: replyingTo.author, text: replyingTo.text } : null
+  };
+
+  if (socket && socket.connected){
+    socket.emit('chat:message', { room: activeRoomId, message });
+    clearReplyTarget();
+    return;
+  }
+
+  // Server unreachable — still let the person see it locally
+  const messages = getMessages(activeRoomId);
+  messages.push(message);
+  saveMessages(activeRoomId, messages);
+  clearReplyTarget();
+  renderRooms();
+  renderMessages();
+}
+
+if (attachBtn && mediaInput){
+  attachBtn.addEventListener('click', () => mediaInput.click());
+
+  mediaInput.addEventListener('change', () => {
+    const file = mediaInput.files && mediaInput.files[0];
+    mediaInput.value = ''; // reset so picking the same file again still fires 'change'
+    if (file) sendMedia(file);
+  });
+}
 
 if (socket){
   socket.on('chat:error', ({ message } = {}) => {
