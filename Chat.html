@@ -69,9 +69,18 @@
     </div>
 
     <form id="messageForm" class="message-form" autocomplete="off">
-      <input id="messageInput" type="text" placeholder="Say something to the squad…" maxlength="500" required>
+      <input id="messageInput" type="text" placeholder="Say something to the squad…" maxlength="500">
+      <button type="button" id="voiceBtn" class="voice-btn" title="Record a voice note">🎤</button>
       <button type="submit">Send</button>
     </form>
+
+    <div id="recordingBar" class="recording-bar">
+      <span class="recording-dot"></span>
+      <span id="recordingTimer" class="recording-timer">0:00</span>
+      <span class="recording-hint">Recording voice note…</span>
+      <button type="button" id="cancelRecordingBtn" class="recording-cancel-btn" title="Cancel">✕</button>
+      <button type="button" id="stopRecordingBtn" class="recording-stop-btn" title="Stop &amp; send">⏹</button>
+    </div>
   </main>
 
 </section>
