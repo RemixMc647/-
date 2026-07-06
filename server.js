@@ -502,12 +502,25 @@ app.get('/api/dm/:userId', dbGuard, authMiddleware, async (req, res) => {
 
 // ---- SOCKET.IO CHAT ----
 const MAX_HISTORY_PER_ROOM = 200;
+const HISTORY_TTL_MS = 24 * 60 * 60 * 1000; // messages older than this get dropped automatically
 const roomHistory = new Map(); // roomId -> [{ id, author, authorId, text, time, replyTo }]
 const roomParticipants = new Map(); // roomId -> Set of userId (for contacts)
 
+// Messages are always pushed in chronological order, so expired ones are
+// always at the front — trimming from the front is enough, no need to
+// scan the whole array. This also means chat history clears itself out
+// naturally 24 hours after it was sent, on top of clearing completely
+// whenever the server restarts/redeploys (since this is in-memory only).
 function getHistory(roomId) {
   if (!roomHistory.has(roomId)) roomHistory.set(roomId, []);
-  return roomHistory.get(roomId);
+  const messages = roomHistory.get(roomId);
+
+  const cutoff = Date.now() - HISTORY_TTL_MS;
+  while (messages.length && messages[0].time < cutoff) {
+    messages.shift();
+  }
+
+  return messages;
 }
 
 function trackRoomParticipant(roomId, userId) {
@@ -539,7 +552,22 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chat:message', ({ room, message }) => {
-    if (!room || !message || typeof message.text !== 'string' || !message.text.trim()) return;
+    if (!room || !message) return;
+
+    const hasText = typeof message.text === 'string' && message.text.trim().length > 0;
+    const hasAudio = message.audio
+      && typeof message.audio.data === 'string'
+      && message.audio.data.startsWith('data:audio/');
+
+    if (!hasText && !hasAudio) return;
+
+    // Voice notes live in the same in-memory room history as everything
+    // else, so cap the payload size to keep memory use sane.
+    const MAX_AUDIO_DATA_LENGTH = 2_000_000; // ~1.5MB of actual audio
+    if (hasAudio && message.audio.data.length > MAX_AUDIO_DATA_LENGTH) {
+      socket.emit('chat:error', { message: 'That voice note is too large to send — keep it under about a minute.' });
+      return;
+    }
 
     // If the socket has a verified identity (logged in), that identity
     // always wins over whatever "author" name the client sent — this is
@@ -561,7 +589,13 @@ io.on('connection', (socket) => {
       id: typeof message.id === 'string' && message.id ? message.id.slice(0, 60) : makeMessageId(),
       author,
       authorId: socket.userId || null,
-      text: String(message.text).trim().slice(0, 500),
+      text: hasText ? String(message.text).trim().slice(0, 500) : '',
+      audio: hasAudio
+        ? {
+            data: message.audio.data,
+            duration: Math.min(120, Math.max(0, Number(message.audio.duration) || 0))
+          }
+        : null,
       time: Date.now(),
       replyTo
     };
