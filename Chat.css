@@ -274,6 +274,148 @@
     margin-top:4px;
 }
 
+.online-list{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    padding:12px 24px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+}
+
+.online-label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.5px;
+    color:#8a9bc4;
+    flex-shrink:0;
+}
+
+.online-empty{
+    font-size:12px;
+    color:rgba(255,255,255,.4);
+}
+
+.online-user{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    border:1px solid rgba(255,255,255,.1);
+    background:rgba(255,255,255,.04);
+    border-radius:20px;
+    padding:4px 10px 4px 4px;
+    cursor:pointer;
+    color:#fff;
+    transition:.2s;
+}
+
+.online-user:hover{
+    border-color:rgba(0,102,255,.5);
+    background:rgba(0,102,255,.15);
+}
+
+.online-avatar{
+    width:24px;
+    height:24px;
+    border-radius:50%;
+    background:linear-gradient(135deg,#0066ff,#00b7ff);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:13px;
+}
+
+.online-username{
+    font-size:12px;
+    font-weight:600;
+}
+
+.msg-author-link{
+    background:none;
+    border:none;
+    padding:0;
+    cursor:pointer;
+    font:inherit;
+}
+
+.msg-author-link:hover{
+    text-decoration:underline;
+}
+
+.msg-edit-btn{
+    background:none;
+    border:none;
+    color:rgba(255,255,255,.4);
+    font-size:13px;
+    cursor:pointer;
+    flex-shrink:0;
+    padding:2px;
+    line-height:1;
+    transition:.2s;
+}
+
+.msg-edit-btn:hover{
+    color:#7da9ff;
+    transform:scale(1.15);
+}
+
+.msg-edited-tag{
+    font-size:9px;
+    color:rgba(255,255,255,.4);
+    margin-left:6px;
+    font-style:italic;
+}
+
+.msg-edit-form{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    min-width:220px;
+}
+
+.msg-edit-input{
+    flex:1;
+    min-width:0;
+    height:32px;
+    border-radius:10px;
+    border:1px solid rgba(255,255,255,.2);
+    background:rgba(0,0,0,.25);
+    color:#fff;
+    padding:0 10px;
+    font-size:13px;
+    outline:none;
+}
+
+.msg-edit-input:focus{
+    border-color:#0066ff;
+}
+
+.msg-edit-save{
+    height:32px;
+    padding:0 12px;
+    border:none;
+    border-radius:10px;
+    background:#0066ff;
+    color:#fff;
+    font-size:12px;
+    font-weight:700;
+    cursor:pointer;
+    flex-shrink:0;
+}
+
+.msg-edit-cancel{
+    background:none;
+    border:none;
+    color:rgba(255,255,255,.6);
+    font-size:14px;
+    cursor:pointer;
+    flex-shrink:0;
+}
+
+.msg-edit-cancel:hover{
+    color:#ff8a8a;
+}
+
 .reply-preview{
     display:flex;
     align-items:center;
