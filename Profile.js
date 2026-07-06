@@ -138,6 +138,18 @@ usernameForm.addEventListener('submit', async (e) => {
     }
 
     localStorage.setItem(AUTH.USER_KEY, JSON.stringify(data.user));
+
+    // The server issues a fresh token whenever the username changes (the
+    // old one still has the old name baked into it). Save it the same way
+    // auth.js saves it at login, so chat picks up the new name right away.
+    if (data.token) {
+      if (typeof AUTH.setToken === 'function') {
+        AUTH.setToken(data.token);
+      } else if (AUTH.TOKEN_KEY) {
+        localStorage.setItem(AUTH.TOKEN_KEY, data.token);
+      }
+    }
+
     renderUser(data.user);
     newUsernameInput.value = '';
 
