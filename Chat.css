@@ -312,6 +312,7 @@
 
 .message-form input{
     flex:1;
+    min-width:0;
     height:50px;
     border-radius:30px;
     border:2px solid rgba(0,102,255,.3);
