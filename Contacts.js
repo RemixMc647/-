@@ -62,10 +62,16 @@ function renderDMMessages(){
   dmMessagesEl.innerHTML = activeMessages.map(m => {
     const isMe = String(m.fromUserId) === String(me.id);
     return `
-      <div class="msg ${isMe ? 'me' : ''}">
+      <div class="msg ${isMe ? 'me' : ''}" data-id="${m.id}">
         <span class="msg-author">${isMe ? 'You' : escapeHTML(activeContact.username)}</span>
-        ${escapeHTML(m.text)}
-        <span class="msg-time">${new Date(m.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+        <span class="msg-text">${escapeHTML(m.text)}</span>
+        <span class="msg-time">${new Date(m.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}${m.edited ? ' · edited' : ''}</span>
+        ${isMe ? `
+          <span class="msg-actions">
+            <button type="button" class="msg-edit-btn" title="Edit message">✏️</button>
+            <button type="button" class="msg-delete-btn" title="Delete message">🗑️</button>
+          </span>
+        ` : ''}
       </div>
     `;
   }).join('');
@@ -159,6 +165,48 @@ contactListEl.addEventListener('click', (e) => {
   openContact(item.dataset.id);
 });
 
+dmMessagesEl.addEventListener('click', (e) => {
+  const editBtn = e.target.closest('.msg-edit-btn');
+  const deleteBtn = e.target.closest('.msg-delete-btn');
+  if (!editBtn && !deleteBtn) return;
+
+  const msgEl = e.target.closest('.msg');
+  const messageId = msgEl && msgEl.dataset.id;
+  if (!messageId || !socket) return;
+
+  if (editBtn) {
+    const current = activeMessages.find(m => String(m.id) === String(messageId));
+    if (!current) return;
+
+    const next = window.prompt('Edit message:', current.text);
+    if (next === null) return; // cancelled
+
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === current.text) return;
+
+    socket.emit('dm:message:edit', { messageId, text: trimmed });
+  }
+
+  if (deleteBtn) {
+    if (!window.confirm('Delete this message? This can\'t be undone.')) return;
+    socket.emit('dm:message:delete', { messageId });
+  }
+});
+
+function handleDmEdited({ messageId, text }){
+  const target = activeMessages.find(m => String(m.id) === String(messageId));
+  if (!target) return;
+  target.text = text;
+  target.edited = true;
+  renderDMMessages();
+}
+
+function handleDmDeleted({ messageId }){
+  const before = activeMessages.length;
+  activeMessages = activeMessages.filter(m => String(m.id) !== String(messageId));
+  if (activeMessages.length !== before) renderDMMessages();
+}
+
 dmMessageForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const text = dmMessageInput.value.trim();
@@ -206,6 +254,11 @@ function handleIncomingDM(payload){
     socket.on('disconnect', updateDmBadge);
     socket.on('connect_error', updateDmBadge);
     socket.on('dm:message', handleIncomingDM);
+    socket.on('dm:message:edited', handleDmEdited);
+    socket.on('dm:message:deleted', handleDmDeleted);
+    socket.on('chat:error', (payload) => {
+      if (payload && payload.message) window.alert(payload.message);
+    });
   }
   updateDmBadge();
 
