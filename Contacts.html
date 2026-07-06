@@ -119,6 +119,8 @@ content="https://atremix-nexus-194v.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc
     </div>
 
     <form id="dmMessageForm" class="message-form" autocomplete="off">
+      <button type="button" id="dmAttachBtn" class="attach-btn" title="Send a photo or video" disabled>➕</button>
+      <input id="dmMediaInput" type="file" accept="image/*,video/*" hidden>
       <input id="dmMessageInput" type="text" placeholder="Message this person privately…" maxlength="1000" required disabled>
       <button type="submit" disabled>Send</button>
     </form>
