@@ -14,17 +14,11 @@ console.log('DEBUG socket.auth immediately after creation:', socket.auth);
 
 /* -----------------------------------------------------------
    ROOMS (DEFAULT_ROOMS comes from rooms.js, loaded before this file)
+   Users can no longer create their own rooms — the room list is always
+   just the fixed DEFAULT_ROOMS set.
 ----------------------------------------------------------- */
 function getRooms(){
-  try {
-    const raw = localStorage.getItem('remix-nexusRooms');
-    const stored = raw ? JSON.parse(raw) : null;
-    return Array.isArray(stored) && stored.length ? stored : DEFAULT_ROOMS;
-  } catch { return DEFAULT_ROOMS; }
-}
-
-function saveRooms(rooms){
-  localStorage.setItem('remix-nexusRooms', JSON.stringify(rooms));
+  return DEFAULT_ROOMS;
 }
 
 // Local per-room message cache, used only so the sidebar can show a
@@ -77,8 +71,6 @@ const messagesEl = document.getElementById('messages');
 const activeRoomNameEl = document.getElementById('activeRoomName');
 const messageForm = document.getElementById('messageForm');
 const messageInput = document.getElementById('messageInput');
-const newRoomInput = document.getElementById('newRoomName');
-const createRoomBtn = document.getElementById('createRoomBtn');
 const connectionBadge = document.getElementById('connectionBadge');
 
 const replyPreview = document.getElementById('replyPreview');
@@ -420,18 +412,6 @@ function sendMessage(text){
   renderMessages();
 }
 
-function createRoom(name){
-  const trimmed = name.trim();
-  if (!trimmed) return;
-  const id = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24) || ('room-' + Date.now());
-  if (rooms.some(r => r.id === id)) { switchRoom(id); return; }
-
-  rooms.push({ id, name: trimmed });
-  saveRooms(rooms);
-  subscribeToKnownRooms();
-  switchRoom(id);
-}
-
 /* -----------------------------------------------------------
    REPLY GESTURES — swipe left on touch devices, right-click on desktop
 ----------------------------------------------------------- */
@@ -605,19 +585,6 @@ messageForm.addEventListener('submit', (e) => {
   e.preventDefault();
   sendMessage(messageInput.value);
   messageInput.value = '';
-});
-
-createRoomBtn.addEventListener('click', () => {
-  createRoom(newRoomInput.value);
-  newRoomInput.value = '';
-});
-
-newRoomInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter'){
-    e.preventDefault();
-    createRoom(newRoomInput.value);
-    newRoomInput.value = '';
-  }
 });
 
 if (socket){
