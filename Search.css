@@ -69,3 +69,23 @@
     font-size:13px;
     color:#7da9ff;
 }
+
+.results-section-title{
+    font-size:14px;
+    font-weight:700;
+    color:#7da9ff;
+    text-transform:uppercase;
+    letter-spacing:.5px;
+    margin:18px 0 4px;
+}
+
+.results-section-title:first-child{
+    margin-top:0;
+}
+
+.search-contacts-hint{
+    text-align:center;
+    color:#9fb3d9;
+    font-size:13px;
+    margin-bottom:20px;
+}
