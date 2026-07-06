@@ -130,6 +130,91 @@ function formatDuration(seconds){
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/* -----------------------------------------------------------
+   UNREAD COUNTS + DESKTOP NOTIFICATIONS
+   The badge count is per-room (shown on the room name in the sidebar).
+   The desktop notification fires for any new message, in any room,
+   whenever the tab isn't actually in front of the person — same trigger
+   WhatsApp Web uses.
+----------------------------------------------------------- */
+function getUnreadCounts(){
+  try {
+    const raw = localStorage.getItem('remix-nexusUnreadRooms');
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveUnreadCounts(counts){
+  localStorage.setItem('remix-nexusUnreadRooms', JSON.stringify(counts));
+}
+
+function bumpUnread(roomId){
+  const counts = getUnreadCounts();
+  counts[roomId] = (counts[roomId] || 0) + 1;
+  saveUnreadCounts(counts);
+}
+
+function clearUnread(roomId){
+  const counts = getUnreadCounts();
+  if (!counts[roomId]) return;
+  delete counts[roomId];
+  saveUnreadCounts(counts);
+}
+
+// The tab counts as "not being looked at" if it's hidden (a different tab
+// or app is in front) or the browser window itself doesn't have focus.
+function isAppInForeground(){
+  return document.visibilityState === 'visible' && document.hasFocus();
+}
+
+if ('Notification' in window && Notification.permission === 'default'){
+  Notification.requestPermission().catch(() => {});
+}
+
+function notifyNewRoomMessage(message, roomId){
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (isAppInForeground()) return;
+
+  const roomMeta = rooms.find(r => r.id === roomId);
+  const roomName = roomMeta ? roomMeta.name : 'a room';
+  const preview = message.text
+    || (message.audio ? '🎤 Voice note' : (message.media ? (message.media.type === 'video' ? '🎬 Video' : '🖼️ Photo') : ''));
+
+  try {
+    const n = new Notification(`${message.author} — ${roomName}`, {
+      body: preview,
+      tag: 'room:' + roomId // replaces any earlier notification for this same room instead of stacking
+    });
+    n.onclick = () => {
+      window.focus();
+      switchRoom(roomId);
+      n.close();
+    };
+  } catch (err) {
+    console.error('Notification error:', err);
+  }
+}
+
+// When the tab regains focus, whatever room is currently open counts as
+// "seen" again — clear its badge.
+function handleForegroundReturn(){
+  if (isAppInForeground() && activeRoomId){
+    clearUnread(activeRoomId);
+    renderRooms();
+    renderMessages();
+  }
+}
+window.addEventListener('focus', handleForegroundReturn);
+document.addEventListener('visibilitychange', handleForegroundReturn);
+
+// Joins every locally-known room's socket.io channel so message broadcasts
+// for rooms you're not currently viewing still reach this client — that's
+// what makes unread badges and notifications possible for those rooms.
+function subscribeToKnownRooms(){
+  if (!socket || !socket.connected) return;
+  socket.emit('chat:subscribeRooms', { rooms: rooms.map(r => r.id) });
+}
+
 if (cancelReplyBtn){
   cancelReplyBtn.addEventListener('click', clearReplyTarget);
 }
@@ -144,19 +229,23 @@ function updateConnectionBadge(){
 }
 
 if (socket){
-  socket.on('connect', () => { updateConnectionBadge(); switchRoom(activeRoomId); });
+  socket.on('connect', () => { updateConnectionBadge(); switchRoom(activeRoomId); subscribeToKnownRooms(); });
   socket.on('disconnect', updateConnectionBadge);
   socket.on('connect_error', updateConnectionBadge);
 }
 updateConnectionBadge();
 
 function renderRooms(){
-  roomListEl.innerHTML = rooms.map(r => `
+  const unread = getUnreadCounts();
+  roomListEl.innerHTML = rooms.map(r => {
+    const count = unread[r.id] || 0;
+    return `
     <div class="room-item ${r.id === activeRoomId ? 'active' : ''}" data-room="${r.id}">
       <span>${escapeHTML(r.name)}</span>
-      <span class="room-count">${getMessages(r.id).length}</span>
+      ${count > 0 ? `<span class="room-count">${count > 99 ? '99+' : count}</span>` : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderMessages(){
@@ -297,6 +386,7 @@ function switchRoom(roomId){
     socket.emit('chat:join', { room: activeRoomId });
   }
 
+  clearUnread(roomId);
   onlineUsers = [];
   renderOnlineList();
   renderRooms();
@@ -338,6 +428,7 @@ function createRoom(name){
 
   rooms.push({ id, name: trimmed });
   saveRooms(rooms);
+  subscribeToKnownRooms();
   switchRoom(id);
 }
 
@@ -540,7 +631,23 @@ if (socket){
     const messages = getMessages(room);
     messages.push(message);
     saveMessages(room, messages);
-    if (room === activeRoomId) renderMessages();
+
+    const myId = getMyUserId();
+    const isMine = myId
+      ? (message.authorId && String(message.authorId) === myId)
+      : (message.author === getUsername());
+
+    if (room === activeRoomId && isAppInForeground()){
+      clearUnread(room);
+      renderMessages();
+    } else if (!isMine){
+      bumpUnread(room);
+    }
+
+    if (!isMine){
+      notifyNewRoomMessage(message, room);
+    }
+
     renderRooms();
   });
 
@@ -550,7 +657,7 @@ if (socket){
     renderOnlineList();
   });
 
-  if (socket.connected) socket.emit('chat:join', { room: activeRoomId });
+  if (socket.connected) { socket.emit('chat:join', { room: activeRoomId }); subscribeToKnownRooms(); }
 }
 
 /* -----------------------------------------------------------
@@ -703,6 +810,31 @@ const mediaInput = document.getElementById('mediaInput');
 
 const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;  // ~4.5MB of actual image
 const MAX_VIDEO_DATA_URL_LENGTH = 16_000_000; // ~12MB of actual video — keep clips short
+const MAX_VIDEO_DURATION_SECONDS = 30 * 60;   // videos over 30 minutes are rejected
+
+// Reads how long a video file is by loading just its metadata (not the
+// whole file) into an off-DOM <video> element. Resolves with NaN if the
+// browser can't determine it, so callers can decide how to handle that.
+function getVideoDurationSeconds(file){
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+
+    const cleanUp = () => URL.revokeObjectURL(video.src);
+
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+      cleanUp();
+      resolve(Number.isFinite(duration) ? duration : NaN);
+    };
+    video.onerror = () => {
+      cleanUp();
+      resolve(NaN);
+    };
+
+    video.src = URL.createObjectURL(file);
+  });
+}
 
 async function sendMedia(file){
   if (!file) return;
@@ -712,6 +844,14 @@ async function sendMedia(file){
   if (!isVideo && !isImage){
     alert('Only photos and videos can be sent this way.');
     return;
+  }
+
+  if (isVideo){
+    const durationSeconds = await getVideoDurationSeconds(file);
+    if (Number.isFinite(durationSeconds) && durationSeconds > MAX_VIDEO_DURATION_SECONDS){
+      alert('That video is too long to send — videos can be at most 30 minutes.');
+      return;
+    }
   }
 
   const dataUrl = await blobToDataURL(file);
