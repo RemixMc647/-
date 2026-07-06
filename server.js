@@ -177,7 +177,7 @@ const RoomParticipant = mongoose.model('RoomParticipant', roomParticipantSchema)
 // Room chat used to live only in an in-memory Map, which meant every
 // redeploy/restart wiped every room's history. Persisting it here means
 // messages survive redeploys — they only disappear once MongoDB's TTL
-// index below actually expires them, 24 hours after they were sent.
+// index below actually expires them, 3 days after they were sent.
 const roomMessageSchema = new mongoose.Schema({
   // Client-generated id (or server-generated fallback) — this is what
   // edit/delete/replyTo all key off of, same as when this lived in memory.
@@ -200,9 +200,9 @@ const roomMessageSchema = new mongoose.Schema({
 });
 
 roomMessageSchema.index({ room: 1, time: 1 });
-// TTL index: MongoDB automatically deletes a document 24 hours after its
+// TTL index: MongoDB automatically deletes a document 3 days after its
 // `time` value, regardless of server restarts/redeploys in between.
-roomMessageSchema.index({ time: 1 }, { expireAfterSeconds: 24 * 60 * 60 });
+roomMessageSchema.index({ time: 1 }, { expireAfterSeconds: 3 * 24 * 60 * 60 });
 
 const RoomMessage = mongoose.model('RoomMessage', roomMessageSchema);
 
@@ -637,7 +637,7 @@ const roomOnline = new Map(); // roomId -> Map of userId -> { userId, username, 
 const participantWriteCache = new Set(); // "roomId:userId" already written to DB this run, to avoid redundant upserts
 
 // Loads the most recent messages for a room straight from MongoDB, in
-// chronological order. Expired messages (older than 24h) are already gone
+// chronological order. Expired messages (older than 3 days) are already gone
 // by this point, since MongoDB's TTL index removes them automatically.
 async function getRoomHistory(roomId) {
   try {
@@ -721,9 +721,15 @@ io.on('connection', (socket) => {
   socket.on('chat:join', async ({ room }) => {
     if (!room || typeof room !== 'string') return;
 
-    if (currentRoom){
+    // NOTE: we deliberately do NOT socket.leave(currentRoom) here. Sockets
+    // stay subscribed to every room they've ever joined, so chat:message
+    // events for a room you're not currently looking at still reach this
+    // client — that's what lets the sidebar show unread counts and fire
+    // notifications for rooms other than the one you're actively viewing.
+    // Online presence (who's "online" in a room) still only tracks the
+    // single "active" room, via addOnline/removeOnline below.
+    if (currentRoom && currentRoom !== room){
       removeOnline(currentRoom, socket);
-      socket.leave(currentRoom);
     }
     currentRoom = room;
     socket.join(room);
@@ -732,6 +738,17 @@ io.on('connection', (socket) => {
     const messages = await getRoomHistory(room);
     socket.emit('chat:history', { room, messages });
     socket.emit('chat:online', { room, users: roomOnlineList(room) });
+  });
+
+  // Joins the socket to every room the client knows about locally, purely
+  // so message broadcasts for those rooms reach this socket (for unread
+  // badges / notifications) even though only one room is "active" at a
+  // time. Does not affect online presence or chat history.
+  socket.on('chat:subscribeRooms', ({ rooms: roomIds } = {}) => {
+    if (!Array.isArray(roomIds)) return;
+    roomIds.slice(0, 50).forEach((r) => {
+      if (typeof r === 'string' && r.trim()) socket.join(r.trim());
+    });
   });
 
   socket.on('chat:message', async ({ room, message }) => {
