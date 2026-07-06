@@ -81,7 +81,23 @@ const replyPreviewAuthor = document.getElementById('replyPreviewAuthor');
 const replyPreviewText = document.getElementById('replyPreviewText');
 const cancelReplyBtn = document.getElementById('cancelReplyBtn');
 
+// Online-users strip isn't part of the original Chat.html, so it's built
+// here at runtime and inserted into the existing .chat-header — this way
+// Chat.html never needs to be touched.
+let onlineListEl = document.getElementById('onlineList');
+if (!onlineListEl) {
+  const header = document.querySelector('.chat-header');
+  if (header) {
+    onlineListEl = document.createElement('div');
+    onlineListEl.id = 'onlineList';
+    onlineListEl.className = 'online-list';
+    header.insertAdjacentElement('afterend', onlineListEl);
+  }
+}
+
 let replyingTo = null; // { id, author, text }
+let editingId = null;  // id of the message currently being edited, if any
+let onlineUsers = [];  // [{ userId, username, avatar }] for the active room
 
 function generateId(){
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -166,19 +182,44 @@ function renderMessages(){
 
     const replyText = m.text || (m.audio ? '🎤 Voice note' : '');
 
+    const canEdit = canDelete && !m.audio; // voice notes can't be edited, only text
+    const isEditingThis = editingId === m.id;
+
     const deleteBlock = canDelete
       ? `<button type="button" class="msg-delete-btn" title="Delete message">🗑</button>`
       : '';
 
+    const editBlock = canEdit
+      ? `<button type="button" class="msg-edit-btn" title="Edit message">✏️</button>`
+      : '';
+
+    // Clickable author name (to view their profile / start a DM) only makes
+    // sense for someone else's verified, logged-in message.
+    const authorIsClickable = !isMe && !!m.authorId;
+    const authorSpan = authorIsClickable
+      ? `<button type="button" class="msg-author msg-author-link" data-uid="${escapeHTML(String(m.authorId))}" data-username="${escapeHTML(m.author)}" title="View profile & message ${escapeHTML(m.author)}">${escapeHTML(m.author)}</button>`
+      : `<span class="msg-author">${escapeHTML(m.author)}</span>`;
+
+    const editedTag = m.edited ? `<span class="msg-edited-tag">(edited)</span>` : '';
+
+    const bubbleInner = isEditingThis
+      ? `<form class="msg-edit-form" data-id="${escapeHTML(m.id || '')}">
+           <input type="text" class="msg-edit-input" value="${escapeHTML(m.text || '')}" maxlength="500">
+           <button type="submit" class="msg-edit-save">Save</button>
+           <button type="button" class="msg-edit-cancel">✕</button>
+         </form>`
+      : `${replyBlock}
+         ${authorSpan}
+         ${bodyBlock}
+         <span class="msg-time">${new Date(m.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}${editedTag}</span>`;
+
     return `
     <div class="msg-row ${isMe ? 'me' : ''}" data-id="${escapeHTML(m.id || '')}" data-author="${escapeHTML(m.author)}" data-text="${escapeHTML(replyText)}">
       <span class="msg-reply-icon">↩</span>
+      ${editBlock}
       ${deleteBlock}
       <div class="msg ${isMe ? 'me' : ''}">
-        ${replyBlock}
-        <span class="msg-author">${escapeHTML(m.author)}</span>
-        ${bodyBlock}
-        <span class="msg-time">${new Date(m.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+        ${bubbleInner}
       </div>
     </div>`;
   }).join('') || '<p class="empty-state">No messages yet — say hi 👋</p>';
@@ -192,6 +233,48 @@ function escapeHTML(str){
   return div.innerHTML;
 }
 
+// Sends the person straight to Contacts.html with this user pre-selected,
+// so they can see the profile and start/continue a private conversation —
+// works even if this is the very first time these two have interacted.
+function goToContact(userId, username, avatar){
+  if (!userId) return;
+  const url = new URL('./Contacts.html', window.location.href);
+  url.searchParams.set('uid', userId);
+  if (username) url.searchParams.set('username', username);
+  if (avatar) url.searchParams.set('avatar', avatar);
+  window.location.href = url.toString();
+}
+
+function renderOnlineList(){
+  if (!onlineListEl) return;
+
+  const myUserId = getMyUserId();
+  const others = onlineUsers.filter(u => String(u.userId) !== myUserId);
+
+  if (!others.length){
+    onlineListEl.innerHTML = '<span class="online-empty">No one else online in this room</span>';
+    return;
+  }
+
+  onlineListEl.innerHTML = `
+    <span class="online-label">Online now</span>
+    ${others.map(u => `
+      <button type="button" class="online-user" data-uid="${escapeHTML(String(u.userId))}" data-username="${escapeHTML(u.username || '')}" data-avatar="${escapeHTML(u.avatar || '')}" title="View profile & message ${escapeHTML(u.username || '')}">
+        <span class="online-avatar">${escapeHTML(u.avatar || '🎮')}</span>
+        <span class="online-username">${escapeHTML(u.username || 'Player')}</span>
+      </button>
+    `).join('')}
+  `;
+}
+
+if (onlineListEl){
+  onlineListEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.online-user');
+    if (!btn) return;
+    goToContact(btn.dataset.uid, btn.dataset.username, btn.dataset.avatar);
+  });
+}
+
 function switchRoom(roomId){
   activeRoomId = roomId;
   const url = new URL(window.location.href);
@@ -202,6 +285,8 @@ function switchRoom(roomId){
     socket.emit('chat:join', { room: activeRoomId });
   }
 
+  onlineUsers = [];
+  renderOnlineList();
   renderRooms();
   renderMessages();
 }
@@ -280,17 +365,83 @@ function requestDeleteMessage(messageId){
 }
 
 messagesEl.addEventListener('click', (e) => {
+  const authorLink = e.target.closest('.msg-author-link');
+  if (authorLink){
+    e.stopPropagation();
+    goToContact(authorLink.dataset.uid, authorLink.dataset.username, '');
+    return;
+  }
+
+  const editBtn = e.target.closest('.msg-edit-btn');
+  if (editBtn){
+    e.stopPropagation();
+    const row = editBtn.closest('.msg-row');
+    if (!row) return;
+    editingId = row.dataset.id;
+    renderMessages();
+    const input = messagesEl.querySelector('.msg-edit-input');
+    if (input) { input.focus(); input.select(); }
+    return;
+  }
+
+  const cancelBtn = e.target.closest('.msg-edit-cancel');
+  if (cancelBtn){
+    e.stopPropagation();
+    editingId = null;
+    renderMessages();
+    return;
+  }
+
   const deleteBtn = e.target.closest('.msg-delete-btn');
-  if (!deleteBtn) return;
-  e.stopPropagation();
+  if (deleteBtn){
+    e.stopPropagation();
+    const row = deleteBtn.closest('.msg-row');
+    const messageId = row ? row.dataset.id : null;
+    if (!messageId) return;
 
-  const row = deleteBtn.closest('.msg-row');
-  const messageId = row ? row.dataset.id : null;
-  if (!messageId) return;
-
-  if (!confirm('Delete this message for everyone?')) return;
-  requestDeleteMessage(messageId);
+    if (!confirm('Delete this message for everyone?')) return;
+    requestDeleteMessage(messageId);
+  }
 });
+
+messagesEl.addEventListener('submit', (e) => {
+  const form = e.target.closest('.msg-edit-form');
+  if (!form) return;
+  e.preventDefault();
+
+  const messageId = form.dataset.id;
+  const input = form.querySelector('.msg-edit-input');
+  const newText = input ? input.value.trim() : '';
+
+  if (!newText){
+    editingId = null;
+    renderMessages();
+    return;
+  }
+
+  requestEditMessage(messageId, newText);
+});
+
+function requestEditMessage(messageId, text){
+  if (socket && socket.connected){
+    socket.emit('chat:message:edit', { room: activeRoomId, messageId, text });
+  } else {
+    // Server unreachable — edit locally so the UI stays responsive; it'll
+    // reconcile with the server on next sync if this didn't actually save.
+    applyEditedMessageLocally(activeRoomId, messageId, text);
+  }
+  editingId = null;
+}
+
+function applyEditedMessageLocally(roomId, messageId, text){
+  const messages = getMessages(roomId);
+  const target = messages.find(m => m.id === messageId);
+  if (!target) return;
+  target.text = text;
+  target.edited = true;
+  saveMessages(roomId, messages);
+  if (roomId === activeRoomId) renderMessages();
+}
 
 let touchState = null; // { row, bubble, startX, startY, active }
 const SWIPE_TRIGGER_PX = 60;
@@ -379,6 +530,12 @@ if (socket){
     saveMessages(room, messages);
     if (room === activeRoomId) renderMessages();
     renderRooms();
+  });
+
+  socket.on('chat:online', ({ room, users }) => {
+    if (room !== activeRoomId) return;
+    onlineUsers = users || [];
+    renderOnlineList();
   });
 
   if (socket.connected) socket.emit('chat:join', { room: activeRoomId });
@@ -533,6 +690,11 @@ if (socket){
   socket.on('chat:message:deleted', ({ room, messageId } = {}) => {
     if (!room || !messageId) return;
     removeMessageLocally(room, messageId);
+  });
+
+  socket.on('chat:message:edited', ({ room, messageId, text } = {}) => {
+    if (!room || !messageId) return;
+    applyEditedMessageLocally(room, messageId, text || '');
   });
 }
 
