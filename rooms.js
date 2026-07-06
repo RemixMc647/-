@@ -5,7 +5,7 @@ drift out of sync with each other.
 ==============================*/
 
 const DEFAULT_ROOMS = [
-  { id: 'lounge', name: 'Just Chatting Lounge' },
+  { id: 'lounge', name: '📙 Just Chatting Lounge' },
   { id: 'minecraft', name: '🧱 Minecraft' },
   { id: 'roblox', name: '🔲 Roblox' },
   { id: 'fortnite', name: '🪂 Fortnite Squads' },
@@ -17,7 +17,7 @@ const DEFAULT_ROOMS = [
   { id: 'valorant', name: '🎯 Valorant' },
   { id: 'lol', name: '🐉 League of Legends' },
   { id: 'wildrift', name: '⚔️ Wild Rift' },
-  { id: 'apex', name: '🪖 Apex Legends' },
+  { id: 'apex', name: '🐾 Apex Legends' },
   { id: 'overwatch', name: '🛡️ Overwatch 2' },
   { id: 'csgo', name: '💣 Counter-Strike 2' },
   { id: 'r6', name: '🧨 Rainbow Six Siege' },
@@ -37,10 +37,11 @@ const DEFAULT_ROOMS = [
   { id: 'valheim', name: '🪓 Valheim' },
   { id: 'palworld', name: '🐾 Palworld' },
   { id: 'terraria', name: '⛏️ Terraria' },
-  { id: 'fallguys', name: '🫘 Fall Guys' },
+  { id: 'fallguys', name: '🤸🏻‍♀️ Fall Guys' },
   { id: 'stumbleguys', name: '🏃 Stumble Guys' },
   { id: 'subwaysurfers', name: '🚇 Subway Surfers' },
   { id: 'candycrush', name: '🍬 Candy Crush' },
   { id: '8ballpool', name: '🎱 8 Ball Pool' },
   { id: 'chess', name: '♟️ Chess.com' },
+   { id: 'dls 2026', name: '⚽ D.L.S 2026' },
 ];
