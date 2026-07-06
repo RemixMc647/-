@@ -108,6 +108,8 @@ content="https://atremix-nexus-194v.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc
     </div>
 
     <form id="messageForm" class="message-form" autocomplete="off">
+      <button type="button" id="attachBtn" class="attach-btn" title="Send a photo or video">➕</button>
+      <input id="mediaInput" type="file" accept="image/*,video/*" hidden>
       <input id="messageInput" type="text" placeholder="Say something to the squad…" maxlength="500">
       <button type="button" id="voiceBtn" class="voice-btn" title="Record a voice note">🎤</button>
       <button type="submit">Send</button>
