@@ -16,11 +16,19 @@ const VIDEOS = [
 function videoCardHTML(video, index){
   const videoId = `clip-${index}`;
 
+  // A raw '#' in a URL marks the start of a fragment identifier, and a raw
+  // space isn't valid in a URL either — so a filename like
+  // './#minecraft.mp4' gets parsed as "go to './', jump to fragment
+  // #minecraft.mp4", and the browser never actually requests the file.
+  // Encoding each path segment (preserving the '/' separators) fixes both
+  // video playback and the "Share" button's copied link.
+  const encodedSrc = video.file ? video.file.split('/').map(encodeURIComponent).join('/') : '';
+
   const player = video.file
-    ? `<video id="${videoId}" controls preload="metadata" playsinline><source src="${video.file}" type="video/mp4">Your browser doesn't support embedded video. <a href="${video.file}">Download the clip</a> instead.</video>`
+    ? `<video id="${videoId}" controls preload="metadata" playsinline><source src="${encodedSrc}" type="video/mp4">Your browser doesn't support embedded video. <a href="${encodedSrc}">Download the clip</a> instead.</video>`
     : `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:60px;">▶️</div>`;
 
-  const shareHref = video.file || `https://www.youtube.com/${YT_CHANNEL_HANDLE}/videos`;
+  const shareHref = encodedSrc || `https://www.youtube.com/${YT_CHANNEL_HANDLE}/videos`;
 
   return `
     <div class="video-card">
