@@ -49,6 +49,15 @@ function getUsername(){
   return guest;
 }
 
+// Real, verified user id (if logged in) — used to decide which messages
+// show a delete button. Never trust display names for this, since two
+// people could share a guest name; the server checks this same id again
+// before actually deleting anything.
+function getMyUserId(){
+  const user = window.AUTH ? AUTH.getUser() : null;
+  return (user && user.id) ? String(user.id) : null;
+}
+
 /* -----------------------------------------------------------
    STATE
 ----------------------------------------------------------- */
@@ -135,9 +144,12 @@ function renderMessages(){
 
   const messages = getMessages(activeRoomId);
   const me = getUsername();
+  const myUserId = getMyUserId();
 
   messagesEl.innerHTML = messages.map(m => {
     const isMe = m.author === me;
+    const canDelete = !!(myUserId && m.authorId && String(m.authorId) === myUserId);
+
     const replyBlock = m.replyTo
       ? `<div class="msg-quote">
            <span class="msg-quote-author">${escapeHTML(m.replyTo.author)}</span>
@@ -154,9 +166,14 @@ function renderMessages(){
 
     const replyText = m.text || (m.audio ? '🎤 Voice note' : '');
 
+    const deleteBlock = canDelete
+      ? `<button type="button" class="msg-delete-btn" title="Delete message">🗑</button>`
+      : '';
+
     return `
     <div class="msg-row ${isMe ? 'me' : ''}" data-id="${escapeHTML(m.id || '')}" data-author="${escapeHTML(m.author)}" data-text="${escapeHTML(replyText)}">
       <span class="msg-reply-icon">↩</span>
+      ${deleteBlock}
       <div class="msg ${isMe ? 'me' : ''}">
         ${replyBlock}
         <span class="msg-author">${escapeHTML(m.author)}</span>
@@ -240,6 +257,39 @@ messagesEl.addEventListener('contextmenu', (e) => {
   if (!row) return;
   e.preventDefault();
   setReplyTarget(readMsgFromRow(row));
+});
+
+/* -----------------------------------------------------------
+   DELETE OWN MESSAGE
+----------------------------------------------------------- */
+function removeMessageLocally(roomId, messageId){
+  const messages = getMessages(roomId).filter(m => m.id !== messageId);
+  saveMessages(roomId, messages);
+  if (roomId === activeRoomId) renderMessages();
+  renderRooms();
+}
+
+function requestDeleteMessage(messageId){
+  if (socket && socket.connected){
+    socket.emit('chat:message:delete', { room: activeRoomId, messageId });
+    return;
+  }
+  // Server unreachable — remove it locally so the UI stays responsive;
+  // it'll come back on next sync with the server if it wasn't actually deleted.
+  removeMessageLocally(activeRoomId, messageId);
+}
+
+messagesEl.addEventListener('click', (e) => {
+  const deleteBtn = e.target.closest('.msg-delete-btn');
+  if (!deleteBtn) return;
+  e.stopPropagation();
+
+  const row = deleteBtn.closest('.msg-row');
+  const messageId = row ? row.dataset.id : null;
+  if (!messageId) return;
+
+  if (!confirm('Delete this message for everyone?')) return;
+  requestDeleteMessage(messageId);
 });
 
 let touchState = null; // { row, bubble, startX, startY, active }
@@ -478,6 +528,11 @@ cancelRecordingBtn.addEventListener('click', () => stopRecording(true));
 if (socket){
   socket.on('chat:error', ({ message } = {}) => {
     if (message) alert(message);
+  });
+
+  socket.on('chat:message:deleted', ({ room, messageId } = {}) => {
+    if (!room || !messageId) return;
+    removeMessageLocally(room, messageId);
   });
 }
 
