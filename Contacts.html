@@ -122,8 +122,17 @@ content="https://atremix-nexus-194v.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc
       <button type="button" id="dmAttachBtn" class="attach-btn" title="Send a photo or video" disabled>➕</button>
       <input id="dmMediaInput" type="file" accept="image/*,video/*" hidden>
       <input id="dmMessageInput" type="text" placeholder="Message this person privately…" maxlength="1000" required disabled>
+      <button type="button" id="dmVoiceBtn" class="voice-btn" title="Record a voice note" disabled>🎤</button>
       <button type="submit" disabled>Send</button>
     </form>
+
+    <div id="dmRecordingBar" class="recording-bar">
+      <span class="recording-dot"></span>
+      <span id="dmRecordingTimer" class="recording-timer">0:00</span>
+      <span class="recording-hint">Recording voice note…</span>
+      <button type="button" id="dmCancelRecordingBtn" class="recording-cancel-btn" title="Cancel">✕</button>
+      <button type="button" id="dmStopRecordingBtn" class="recording-stop-btn" title="Stop &amp; send">⏹</button>
+    </div>
   </main>
 
 </section>
