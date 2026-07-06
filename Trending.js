@@ -1,26 +1,26 @@
 /* ===============================
    REMIX-NEXUS — LATEST VIDEOS
-   Add your own video IDs below (the part after "v=" in a
-   YouTube URL). No API key needed for this list — swap it
-   for a live YouTube Data API v3 fetch later if you want the
-   list to update automatically.
+   These clips are hosted directly on your own site (as .mp4 files
+   sitting next to this script), so they play right here on the page —
+   nothing links out to YouTube. To add more clips, just drop another
+   .mp4 file next to this one and add an entry below.
 ================================== */
 const YT_CHANNEL_HANDLE = '@remixmc-d6v';
 
 const VIDEOS = [
-  { id: '0', title: './#minecraft.mp4', meta: '🎮 Set the video ID in Trending.js', badge: 'NEW' },
-  { id: '1', title: './#minecraft (1).mp4', meta: '🎮 Set the video ID in Trending.js', badge: 'HOT' },
-  { id: '2', title: './#minecraft (2).mp4', meta: '🎮 Set the video ID in Trending.js', badge: 'CLIP' },
+  { file: './minecraft-1.mp4', title: 'Minecraft Clip #1', meta: '🎮 Community clip', badge: 'NEW' },
+  { file: './minecraft-2.mp4', title: 'Minecraft Clip #2', meta: '🎮 Community clip', badge: 'HOT' },
+  { file: './minecraft-3.mp4', title: 'Minecraft Clip #3', meta: '🎮 Community clip', badge: 'CLIP' },
 ];
 
 function videoCardHTML(video, index){
-  const player = video.id
-    ? `<iframe src="https://www.youtube.com/embed/${video.id}" title="${video.title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
+  const videoId = `clip-${index}`;
+
+  const player = video.file
+    ? `<video id="${videoId}" controls preload="metadata" playsinline><source src="${video.file}" type="video/mp4">Your browser doesn't support embedded video. <a href="${video.file}">Download the clip</a> instead.</video>`
     : `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:60px;">▶️</div>`;
 
-  const watchHref = video.id
-    ? `https://www.youtube.com/watch?v=${video.id}`
-    : `https://www.youtube.com/${YT_CHANNEL_HANDLE}/videos`;
+  const shareHref = video.file || `https://www.youtube.com/${YT_CHANNEL_HANDLE}/videos`;
 
   return `
     <div class="video-card">
@@ -29,8 +29,8 @@ function videoCardHTML(video, index){
       <h3 class="video-title">${video.title}</h3>
       <div class="video-meta">${video.meta}</div>
       <div class="card-buttons">
-        <a class="watch-btn" href="${watchHref}" target="_blank" rel="noopener">▶ Watch on YouTube</a>
-        <button class="share-btn" data-share="${watchHref}">🔗 Share</button>
+        <button class="watch-btn" data-fullscreen="${videoId}">⛶ Fullscreen</button>
+        <button class="share-btn" data-share="${shareHref}">🔗 Share</button>
       </div>
     </div>
   `;
@@ -42,13 +42,23 @@ function renderVideos(){
   wrap.innerHTML = VIDEOS.map(videoCardHTML).join('');
 
   wrap.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-share]');
-    if (!btn) return;
-    const url = btn.getAttribute('data-share');
-    navigator.clipboard?.writeText(url).then(() => {
-      btn.textContent = '✅ Copied';
-      setTimeout(() => { btn.textContent = '🔗 Share'; }, 1600);
-    }).catch(() => alert('Share this link: ' + url));
+    const shareBtn = e.target.closest('button[data-share]');
+    if (shareBtn) {
+      const url = shareBtn.getAttribute('data-share');
+      const absoluteUrl = new URL(url, window.location.href).href;
+      navigator.clipboard?.writeText(absoluteUrl).then(() => {
+        shareBtn.textContent = '✅ Copied';
+        setTimeout(() => { shareBtn.textContent = '🔗 Share'; }, 1600);
+      }).catch(() => alert('Share this link: ' + absoluteUrl));
+      return;
+    }
+
+    const fullscreenBtn = e.target.closest('button[data-fullscreen]');
+    if (fullscreenBtn) {
+      const vid = document.getElementById(fullscreenBtn.getAttribute('data-fullscreen'));
+      if (vid?.requestFullscreen) vid.requestFullscreen();
+      else if (vid?.webkitEnterFullscreen) vid.webkitEnterFullscreen(); // iOS Safari
+    }
   });
 }
 
