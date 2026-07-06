@@ -68,6 +68,49 @@
     color:#8a9bc4;
 }
 
+.msg{
+    position:relative;
+}
+
+.msg-text{
+    white-space:pre-wrap;
+    word-break:break-word;
+}
+
+.msg-actions{
+    display:inline-flex;
+    gap:6px;
+    margin-left:8px;
+    opacity:0;
+    transition:.15s;
+    vertical-align:middle;
+}
+
+.msg:hover .msg-actions{
+    opacity:1;
+}
+
+.msg-edit-btn,
+.msg-delete-btn{
+    background:rgba(255,255,255,.08);
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+    font-size:12px;
+    padding:2px 6px;
+    line-height:1.4;
+    color:inherit;
+    transition:.15s;
+}
+
+.msg-edit-btn:hover{
+    background:rgba(0,102,255,.35);
+}
+
+.msg-delete-btn:hover{
+    background:rgba(255,59,59,.35);
+}
+
 .loggedout-icon{
     font-size:48px;
     margin-bottom:10px;
