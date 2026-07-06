@@ -93,6 +93,13 @@ function clearReplyTarget(){
   replyPreview.style.display = 'none';
 }
 
+function formatDuration(seconds){
+  const total = Math.max(0, Math.round(seconds || 0));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 if (cancelReplyBtn){
   cancelReplyBtn.addEventListener('click', clearReplyTarget);
 }
@@ -138,13 +145,22 @@ function renderMessages(){
          </div>`
       : '';
 
+    const bodyBlock = (m.audio && m.audio.data)
+      ? `<div class="voice-note">
+           <audio controls preload="metadata" src="${m.audio.data}"></audio>
+           <span class="voice-note-duration">${formatDuration(m.audio.duration)}</span>
+         </div>`
+      : escapeHTML(m.text);
+
+    const replyText = m.text || (m.audio ? '🎤 Voice note' : '');
+
     return `
-    <div class="msg-row ${isMe ? 'me' : ''}" data-id="${escapeHTML(m.id || '')}" data-author="${escapeHTML(m.author)}" data-text="${escapeHTML(m.text)}">
+    <div class="msg-row ${isMe ? 'me' : ''}" data-id="${escapeHTML(m.id || '')}" data-author="${escapeHTML(m.author)}" data-text="${escapeHTML(replyText)}">
       <span class="msg-reply-icon">↩</span>
       <div class="msg ${isMe ? 'me' : ''}">
         ${replyBlock}
         <span class="msg-author">${escapeHTML(m.author)}</span>
-        ${escapeHTML(m.text)}
+        ${bodyBlock}
         <span class="msg-time">${new Date(m.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
       </div>
     </div>`;
@@ -317,6 +333,193 @@ if (socket){
 
   if (socket.connected) socket.emit('chat:join', { room: activeRoomId });
 }
+
+/* -----------------------------------------------------------
+   VOICE NOTES — record with MediaRecorder, send as a data URL
+----------------------------------------------------------- */
+const voiceBtn = document.getElementById('voiceBtn');
+const recordingBar = document.getElementById('recordingBar');
+const recordingTimerEl = document.getElementById('recordingTimer');
+const cancelRecordingBtn = document.getElementById('cancelRecordingBtn');
+const stopRecordingBtn = document.getElementById('stopRecordingBtn');
+
+const MAX_RECORDING_SECONDS = 120; // keeps in-memory room history reasonable
+const MAX_AUDIO_DATA_URL_LENGTH = 2_000_000; // ~1.5MB of actual audio
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingStartTime = 0;
+let recordingTimerInterval = null;
+let recordingCancelled = false;
+
+function pickAudioMimeType(){
+  if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+  return candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function showRecordingUI(){
+  messageForm.style.display = 'none';
+  recordingBar.classList.add('active');
+}
+
+function hideRecordingUI(){
+  messageForm.style.display = 'flex';
+  recordingBar.classList.remove('active');
+  recordingTimerEl.textContent = '0:00';
+}
+
+async function startRecording(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    alert("Voice notes need microphone access, and this browser doesn't support it.");
+    return;
+  }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    alert('Microphone access was blocked. Allow it in your browser settings to send voice notes.');
+    return;
+  }
+
+  recordedChunks = [];
+  recordingCancelled = false;
+
+  const mimeType = pickAudioMimeType();
+  mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+  mediaRecorder.addEventListener('dataavailable', (e) => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  });
+
+  mediaRecorder.addEventListener('stop', () => {
+    stream.getTracks().forEach(track => track.stop());
+    clearInterval(recordingTimerInterval);
+    hideRecordingUI();
+
+    if (recordingCancelled || recordedChunks.length === 0) return;
+
+    const durationSeconds = Math.min(
+      MAX_RECORDING_SECONDS,
+      Math.round((Date.now() - recordingStartTime) / 1000)
+    );
+
+    const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+    sendVoiceNote(blob, durationSeconds);
+  });
+
+  mediaRecorder.start();
+  recordingStartTime = Date.now();
+  showRecordingUI();
+
+  recordingTimerInterval = setInterval(() => {
+    const elapsed = (Date.now() - recordingStartTime) / 1000;
+    recordingTimerEl.textContent = formatDuration(elapsed);
+    if (elapsed >= MAX_RECORDING_SECONDS) stopRecording(false);
+  }, 250);
+}
+
+function stopRecording(cancelled){
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+  recordingCancelled = !!cancelled;
+  mediaRecorder.stop();
+}
+
+function blobToDataURL(blob){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function sendVoiceNote(blob, durationSeconds){
+  const dataUrl = await blobToDataURL(blob);
+
+  if (dataUrl.length > MAX_AUDIO_DATA_URL_LENGTH){
+    alert('That voice note is too long to send — try keeping it under about a minute.');
+    return;
+  }
+
+  const message = {
+    id: generateId(),
+    author: getUsername(),
+    text: '',
+    audio: { data: dataUrl, duration: durationSeconds },
+    time: Date.now(),
+    replyTo: replyingTo ? { id: replyingTo.id, author: replyingTo.author, text: replyingTo.text } : null
+  };
+
+  if (socket && socket.connected){
+    socket.emit('chat:message', { room: activeRoomId, message });
+    clearReplyTarget();
+    return;
+  }
+
+  // Server unreachable — still let the person see their own voice note locally
+  const messages = getMessages(activeRoomId);
+  messages.push(message);
+  saveMessages(activeRoomId, messages);
+  clearReplyTarget();
+  renderRooms();
+  renderMessages();
+}
+
+voiceBtn.addEventListener('click', () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') return;
+  startRecording();
+});
+
+stopRecordingBtn.addEventListener('click', () => stopRecording(false));
+cancelRecordingBtn.addEventListener('click', () => stopRecording(true));
+
+if (socket){
+  socket.on('chat:error', ({ message } = {}) => {
+    if (message) alert(message);
+  });
+}
+
+/* -----------------------------------------------------------
+   DESKTOP LAYOUT FIX — keep the chat panel's height pinned to the
+   real leftover viewport space so long conversations scroll inside
+   the panel instead of growing the whole page. Mobile/tablet keeps
+   its original natural-page-scroll behavior untouched.
+----------------------------------------------------------- */
+const DESKTOP_BREAKPOINT = 821;
+
+function adjustChatShellHeight(){
+  if (window.innerWidth < DESKTOP_BREAKPOINT){
+    document.documentElement.style.removeProperty('--chat-shell-height');
+    return;
+  }
+
+  const header = document.querySelector('.nav-bar');
+  const footer = document.querySelector('.footer');
+  const shell = document.querySelector('.chat-shell');
+  if (!header || !footer || !shell) return;
+
+  const headerBottom = header.getBoundingClientRect().bottom;
+  const footerHeight = footer.offsetHeight;
+  const shellStyles = getComputedStyle(shell);
+  const shellMarginTop = parseFloat(shellStyles.marginTop) || 0;
+  const shellMarginBottom = parseFloat(shellStyles.marginBottom) || 0;
+  const buffer = 20; // a little breathing room so nothing touches the footer
+
+  const available = window.innerHeight
+    - headerBottom
+    - shellMarginTop
+    - shellMarginBottom
+    - footerHeight
+    - buffer;
+
+  document.documentElement.style.setProperty('--chat-shell-height', Math.max(available, 480) + 'px');
+}
+
+window.addEventListener('resize', adjustChatShellHeight);
+window.addEventListener('load', adjustChatShellHeight);
+adjustChatShellHeight();
 
 /* -----------------------------------------------------------
    INIT
