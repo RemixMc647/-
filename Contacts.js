@@ -11,6 +11,8 @@ const shellEl = document.getElementById('contacts-shell');
 
 const contactListEl = document.getElementById('contactList');
 const activeContactNameEl = document.getElementById('activeContactName');
+const activeContactAvatarEl = document.getElementById('activeContactAvatar');
+const activeContactJoinedEl = document.getElementById('activeContactJoined');
 const dmConnectionBadge = document.getElementById('dmConnectionBadge');
 const dmMessagesEl = document.getElementById('dmMessages');
 const dmMessageForm = document.getElementById('dmMessageForm');
@@ -84,12 +86,40 @@ async function loadContacts(){
   }
 }
 
-async function openContact(contactId){
-  const contact = contacts.find(c => c.id === contactId);
+function renderContactHeader(contact){
+  activeContactNameEl.textContent = contact.username;
+
+  if (contact.avatar){
+    activeContactAvatarEl.textContent = contact.avatar;
+    activeContactAvatarEl.style.display = 'flex';
+  } else {
+    activeContactAvatarEl.style.display = 'none';
+  }
+
+  if (contact.createdAt){
+    const joined = new Date(contact.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+    activeContactJoinedEl.textContent = 'Member since ' + joined;
+  } else {
+    activeContactJoinedEl.textContent = '';
+  }
+}
+
+// `fallback` lets us open a conversation with someone who isn't in the
+// contacts list yet — e.g. arriving here from a "view profile" link
+// elsewhere in the app. Once messages are exchanged, the server-side
+// contacts list (persisted in MongoDB) will include them permanently too.
+async function openContact(contactId, fallback){
+  let contact = contacts.find(c => c.id === contactId);
+
+  if (!contact && fallback){
+    contact = { id: contactId, username: fallback.username || 'Player', avatar: fallback.avatar || '' };
+    contacts = [contact, ...contacts];
+  }
+
   if (!contact) return;
 
   activeContact = contact;
-  activeContactNameEl.textContent = contact.username;
+  renderContactHeader(contact);
   renderContactList();
 
   dmMessageInput.disabled = false;
@@ -105,6 +135,15 @@ async function openContact(contactId){
     if (!res.ok){
       dmMessagesEl.innerHTML = `<p class="empty-state">${escapeHTML(data.error || 'Could not load this conversation.')}</p>`;
       return;
+    }
+
+    // The server's user record is the source of truth (correct current
+    // username/avatar/join date), so refresh the contact + header with it.
+    if (data.user){
+      activeContact = { id: contactId, username: data.user.username, avatar: data.user.avatar, createdAt: data.user.createdAt };
+      contacts = contacts.map(c => c.id === contactId ? { ...c, ...activeContact } : c);
+      renderContactHeader(activeContact);
+      renderContactList();
     }
 
     activeMessages = data.messages || [];
@@ -170,5 +209,14 @@ function handleIncomingDM(payload){
   }
   updateDmBadge();
 
-  loadContacts();
+  await loadContacts();
+
+  const params = new URLSearchParams(window.location.search);
+  const uid = params.get('uid');
+  if (uid && uid !== String(me.id)){
+    openContact(uid, {
+      username: params.get('username') || '',
+      avatar: params.get('avatar') || ''
+    });
+  }
 })();
