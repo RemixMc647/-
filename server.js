@@ -86,14 +86,30 @@ const io = new Server(server, {
 // Verify the JWT (if the client sent one) BEFORE the connection completes.
 // This is what lets us trust socket.userId / socket.username later instead
 // of trusting whatever "author" name the client claims to be.
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const token = socket.handshake.auth && socket.handshake.auth.token;
 
   if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
       socket.userId = decoded.id;
-      socket.username = decoded.username;
+      // Look the user up fresh rather than trusting decoded.username —
+      // the JWT payload is only re-issued when the token is refreshed, so
+      // if we trusted it directly a username change wouldn't show up in
+      // chat until the old token expired. This keeps chat identity always
+      // in sync with whatever is on the Profile page.
+      try {
+        const user = await User.findById(decoded.id);
+        if (user) {
+          socket.username = user.username;
+          socket.avatar = user.avatar;
+        } else {
+          socket.username = decoded.username;
+        }
+      } catch (lookupErr) {
+        // DB hiccup — fall back to what the token says rather than failing
+        socket.username = decoded.username;
+      }
     } catch (err) {
       // Invalid/expired token — still let them connect as a guest rather
       // than hard-failing, they just won't have a verified identity.
@@ -130,6 +146,18 @@ const dmSchema = new mongoose.Schema({
 });
 
 const DirectMessage = mongoose.model('DirectMessage', dmSchema);
+
+// ---- ROOM PARTICIPANT MODEL ----
+// Persisted (not in-memory) so that "who have I chatted with in a room"
+// survives server restarts/redeploys — this is what makes contacts
+// permanent instead of resetting every time the server redeploys.
+const roomParticipantSchema = new mongoose.Schema({
+  roomId: { type: String, required: true, index: true },
+  userId: { type: String, required: true, index: true }
+});
+roomParticipantSchema.index({ roomId: 1, userId: 1 }, { unique: true });
+
+const RoomParticipant = mongoose.model('RoomParticipant', roomParticipantSchema);
 
 function conversationKey(idA, idB) {
   return [String(idA), String(idB)].sort();
@@ -327,7 +355,13 @@ app.put('/api/me/username', dbGuard, authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
 
-    res.json({ user: publicUser(user) });
+    // The old JWT still has the old username baked into it, so anything that
+    // trusts the token (like the chat socket) would keep showing the old
+    // name until it expired. Issuing a fresh token here fixes that as soon
+    // as the front-end swaps it in.
+    const token = createToken(user);
+
+    res.json({ user: publicUser(user), token });
   } catch (err) {
     console.error('Update username error:', err);
     res.status(500).json({ error: 'Something went wrong.' });
@@ -454,26 +488,48 @@ app.post('/api/reset-password', dbGuard, async (req, res) => {
   }
 });
 
-// CONTACTS — other people you've shared a room with, based on chat activity
-// since this server last restarted (room history itself is in-memory only,
-// same as the existing chat system, so this list resets on redeploy too).
+// CONTACTS — anyone you've ever shared a chat room with, or ever privately
+// messaged. Both sources are read from MongoDB (RoomParticipant / DirectMessage),
+// so once someone becomes a contact they stay a contact forever, even across
+// server restarts/redeploys.
 app.get('/api/contacts', dbGuard, authMiddleware, async (req, res) => {
   try {
     const myId = String(req.user.id);
     const contactIds = new Set();
 
-    for (const participants of roomParticipants.values()) {
-      if (participants.has(myId)) {
-        participants.forEach((id) => {
-          if (id !== myId) contactIds.add(id);
-        });
-      }
+    // 1) People who were ever in the same room as me.
+    const myRooms = await RoomParticipant.find({ userId: myId }).distinct('roomId');
+    if (myRooms.length) {
+      const roomMates = await RoomParticipant.find({ roomId: { $in: myRooms }, userId: { $ne: myId } }).distinct('userId');
+      roomMates.forEach((id) => contactIds.add(String(id)));
     }
+
+    // 2) People I've ever exchanged a direct message with.
+    const dmPartners = await DirectMessage.find({ participants: myId }).distinct('participants');
+    dmPartners.flat().forEach((id) => {
+      if (String(id) !== myId) contactIds.add(String(id));
+    });
 
     const users = await User.find({ _id: { $in: Array.from(contactIds) } });
     res.json({ contacts: users.map(publicUser) });
   } catch (err) {
     console.error('Get contacts error:', err);
+    res.status(500).json({ error: 'Something went wrong.' });
+  }
+});
+
+// PUBLIC PROFILE — lets you view basic info for any user (e.g. someone
+// you've just seen chatting in a room but haven't messaged privately yet)
+// before deciding to start a conversation with them.
+app.get('/api/users/:id', dbGuard, authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'That user could not be found.' });
+    }
+    res.json({ user: publicUser(user) });
+  } catch (err) {
+    console.error('Get user profile error:', err);
     res.status(500).json({ error: 'Something went wrong.' });
   }
 });
@@ -503,8 +559,9 @@ app.get('/api/dm/:userId', dbGuard, authMiddleware, async (req, res) => {
 // ---- SOCKET.IO CHAT ----
 const MAX_HISTORY_PER_ROOM = 200;
 const HISTORY_TTL_MS = 24 * 60 * 60 * 1000; // messages older than this get dropped automatically
-const roomHistory = new Map(); // roomId -> [{ id, author, authorId, text, time, replyTo }]
-const roomParticipants = new Map(); // roomId -> Set of userId (for contacts)
+const roomHistory = new Map(); // roomId -> [{ id, author, authorId, text, time, replyTo, edited }]
+const roomOnline = new Map(); // roomId -> Map of userId -> { userId, username, avatar, sockets: Set<socketId> } (live presence only, not persisted)
+const participantWriteCache = new Set(); // "roomId:userId" already written to DB this run, to avoid redundant upserts
 
 // Messages are always pushed in chronological order, so expired ones are
 // always at the front — trimming from the front is enough, no need to
@@ -523,9 +580,60 @@ function getHistory(roomId) {
   return messages;
 }
 
-function trackRoomParticipant(roomId, userId) {
-  if (!roomParticipants.has(roomId)) roomParticipants.set(roomId, new Set());
-  roomParticipants.get(roomId).add(String(userId));
+// Records, permanently, that this user has been active in this room — this
+// is the persisted fact that makes /api/contacts work forever. Cached per
+// server run so we don't hit the DB on every single message.
+async function trackRoomParticipant(roomId, userId) {
+  const key = roomId + ':' + userId;
+  if (participantWriteCache.has(key)) return;
+  participantWriteCache.add(key);
+  try {
+    await RoomParticipant.updateOne(
+      { roomId, userId: String(userId) },
+      { $setOnInsert: { roomId, userId: String(userId) } },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error('Track room participant error:', err);
+  }
+}
+
+function roomOnlineList(roomId) {
+  const online = roomOnline.get(roomId);
+  if (!online) return [];
+  return Array.from(online.values()).map(({ userId, username, avatar }) => ({ userId, username, avatar }));
+}
+
+function broadcastOnline(roomId) {
+  io.to(roomId).emit('chat:online', { room: roomId, users: roomOnlineList(roomId) });
+}
+
+function addOnline(roomId, socket) {
+  if (!socket.userId) return; // presence list is only meaningful for logged-in users
+  if (!roomOnline.has(roomId)) roomOnline.set(roomId, new Map());
+  const online = roomOnline.get(roomId);
+  const existing = online.get(String(socket.userId));
+  if (existing) {
+    existing.sockets.add(socket.id);
+  } else {
+    online.set(String(socket.userId), {
+      userId: String(socket.userId),
+      username: socket.username,
+      avatar: socket.avatar,
+      sockets: new Set([socket.id])
+    });
+  }
+  broadcastOnline(roomId);
+}
+
+function removeOnline(roomId, socket) {
+  const online = roomOnline.get(roomId);
+  if (!online || !socket.userId) return;
+  const existing = online.get(String(socket.userId));
+  if (!existing) return;
+  existing.sockets.delete(socket.id);
+  if (existing.sockets.size === 0) online.delete(String(socket.userId));
+  broadcastOnline(roomId);
 }
 
 function makeMessageId() {
@@ -544,11 +652,16 @@ io.on('connection', (socket) => {
   socket.on('chat:join', ({ room }) => {
     if (!room || typeof room !== 'string') return;
 
-    if (currentRoom) socket.leave(currentRoom);
+    if (currentRoom){
+      removeOnline(currentRoom, socket);
+      socket.leave(currentRoom);
+    }
     currentRoom = room;
     socket.join(room);
+    addOnline(room, socket);
 
     socket.emit('chat:history', { room, messages: getHistory(room) });
+    socket.emit('chat:online', { room, users: roomOnlineList(room) });
   });
 
   socket.on('chat:message', ({ room, message }) => {
@@ -605,10 +718,45 @@ io.on('connection', (socket) => {
     if (history.length > MAX_HISTORY_PER_ROOM) history.shift();
 
     if (clean.authorId) {
-      trackRoomParticipant(room, clean.authorId);
+      trackRoomParticipant(room, clean.authorId); // fire-and-forget; persists forever
     }
 
     io.to(room).emit('chat:message', { room, message: clean });
+  });
+
+  // EDIT A MESSAGE — same ownership rule as delete: only the verified
+  // author (authorId set from the JWT at send-time) can edit it, and a
+  // guest-authored message (no authorId) can never be edited this way.
+  socket.on('chat:message:edit', ({ room, messageId, text }) => {
+    if (!room || !messageId || typeof text !== 'string') return;
+
+    if (!socket.userId) {
+      socket.emit('chat:error', { message: 'Log in to edit your messages.' });
+      return;
+    }
+
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const history = getHistory(room);
+    const target = history.find((m) => m.id === messageId);
+
+    if (!target) return; // already gone (expired or deleted elsewhere)
+
+    if (!target.authorId || String(target.authorId) !== String(socket.userId)) {
+      socket.emit('chat:error', { message: 'You can only edit your own messages.' });
+      return;
+    }
+
+    if (target.audio) {
+      socket.emit('chat:error', { message: 'Voice notes can’t be edited.' });
+      return;
+    }
+
+    target.text = trimmed.slice(0, 500);
+    target.edited = true;
+
+    io.to(room).emit('chat:message:edited', { room, messageId, text: target.text });
   });
 
   // DELETE A MESSAGE — only the logged-in author of a message can delete
@@ -672,7 +820,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    if (currentRoom) socket.leave(currentRoom);
+    if (currentRoom) {
+      removeOnline(currentRoom, socket);
+      socket.leave(currentRoom);
+    }
   });
 });
 
