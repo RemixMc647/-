@@ -117,3 +117,18 @@
 .contact-box a:hover{
     color:#00b7ff;
 }
+
+@media(max-width:480px){
+    .static-shell{ width:95%; margin:24px auto 50px; }
+    .static-card{ padding:22px 18px; border-radius:18px; }
+
+    .static-card h1{ font-size:24px; }
+    .static-card h2{ font-size:17px; margin:24px 0 10px; }
+    .static-card p, .static-card li{ font-size:14px; }
+
+    /* minmax(220px,1fr) can be wider than the smallest phone screens once
+       the card's own padding is subtracted — forcing one column removes
+       that risk entirely instead of relying on the math working out. */
+    .contact-grid{ grid-template-columns:1fr; gap:14px; margin-top:18px; }
+    .contact-box{ padding:18px; }
+}
