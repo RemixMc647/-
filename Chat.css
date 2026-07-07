@@ -613,6 +613,53 @@
    so the text input gets most of the available width. Targets
    .message-form, which both Chat.html and Contacts.html's DM form use. */
 @media(max-width:480px){
+    .chat-shell{ width:96%; margin:12px auto 50px; gap:14px; }
+
+    .chat-rooms{ padding:14px; }
+    .chat-rooms-title{ font-size:14px; margin-bottom:10px; }
+
+    .room-item{ padding:10px 12px; font-size:13px; }
+    .room-count{ font-size:10px; padding:2px 7px; }
+
+    /* Truncate instead of overflowing — a long room name + the unread
+       badge would otherwise be forced wider than the screen. */
+    .chat-header{
+        padding:14px 16px;
+        gap:10px;
+    }
+
+    .chat-header h2{
+        font-size:16px;
+        min-width:0;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+
+    .messages{ padding:14px 16px; gap:8px; }
+
+    .msg{
+        max-width:85%;
+        padding:10px 13px;
+        font-size:13px;
+    }
+
+    .media-note{ max-width:200px; }
+    .media-note img,
+    .media-note video{ max-width:200px; max-height:200px; }
+
+    .voice-note audio{ max-width:160px; }
+
+    .online-list{ padding:10px 16px; gap:8px; }
+    .online-avatar{ width:20px; height:20px; font-size:11px; }
+    .online-username{ font-size:11px; }
+
+    .reply-preview{ margin:0 16px; padding:8px 12px; }
+    .reply-preview-label{ font-size:11px; }
+    .reply-preview-content p{ font-size:12px; }
+
+    .msg-edit-form{ min-width:0; }
+
     .message-form{
         gap:8px;
         padding:14px 16px;
@@ -636,4 +683,8 @@
         height:38px;
         font-size:16px;
     }
+
+    .recording-bar{ padding:14px 16px; gap:10px; }
+    .recording-cancel-btn, .recording-stop-btn{ width:36px; height:36px; font-size:14px; }
+    .recording-hint{ font-size:12px; }
 }
