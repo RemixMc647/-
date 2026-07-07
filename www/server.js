@@ -58,8 +58,22 @@ if (!JWT_SECRET) {
 
 // ---- MIDDLEWARE ----
 app.use(express.json());
+const allowedOrigins = [
+  process.env.FRONTEND_ORIGIN,   // your real website (keep using env var if you already had one)
+  'https://localhost',           // Capacitor default origin on Android
+  'capacitor://localhost'        // Capacitor default origin on iOS (safe to include even if you don't build iOS yet)
+];
+
 app.use(cors({
-  origin: FRONTEND_ORIGIN,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like Postman, curl, some native contexts)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('Blocked by CORS:', origin); // helpful for debugging later
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
