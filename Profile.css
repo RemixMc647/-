@@ -217,3 +217,25 @@
 .logout-btn:hover{
     background:rgba(255,60,60,.3);
 }
+
+@media(max-width:480px){
+    .profile-shell{ width:95%; margin:24px auto 60px; }
+    .profile-card{ padding:22px 18px; border-radius:20px; }
+
+    .profile-header{ gap:14px; margin-bottom:20px; }
+    .avatar-display{ width:64px; height:64px; font-size:30px; }
+    .profile-card h2{ font-size:20px; }
+    .profile-email{ font-size:12px; }
+
+    .profile-info-grid{ gap:10px; margin-bottom:20px; }
+    .info-box{ padding:12px 14px; }
+    .info-value{ font-size:14px; }
+
+    .avatar-picker-section, .account-settings-section{ margin-bottom:20px; }
+    .avatar-option{ width:46px; height:46px; font-size:20px; }
+
+    .inline-form input{ min-width:0; height:44px; font-size:13px; }
+    .save-btn{ height:44px; padding:0 16px; font-size:13px; width:100%; }
+
+    .logout-btn{ height:46px; font-size:14px; }
+}
