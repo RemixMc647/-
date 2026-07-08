@@ -25,7 +25,7 @@
     .chat-rooms{
         display:flex;
         flex-direction:column;
-        overflow:hidden;
+
     }
 
     .room-list{
