@@ -595,6 +595,7 @@ if (socket){
   });
 
   socket.on('chat:message', ({ room, message }) => {
+    console.log('🔔 chat:message received for room:', room, '| currently viewing:', activeRoomId, '| message:', message);
     const messages = getMessages(room);
     messages.push(message);
     saveMessages(room, messages);
