@@ -525,3 +525,113 @@ body{
     box-shadow:0 0 25px rgba(0,102,255,.6);
     transform:translateY(-3px);
 }
+
+/* ===============================================================
+   DOWNLOAD APP BUTTON — inline pill button, sits in the hero
+   button row on GamingHome next to "Join a Chat Room" / "Subscribe".
+   Links to the APK served by the server's /download/app route.
+   =============================================================== */
+.download-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:9px;
+    padding:15px 35px;
+    border:none;
+    border-radius:50px;
+    background:linear-gradient(135deg,#00c853,#00e676);
+    color:#04210f;
+    font-size:16px;
+    font-weight:700;
+    cursor:pointer;
+    text-decoration:none;
+    transition:.35s;
+}
+
+.download-btn .download-btn-icon{
+    font-size:18px;
+    line-height:1;
+}
+
+.download-btn:hover{
+    transform:translateY(-5px);
+    box-shadow:0 0 25px rgba(0,230,118,.7);
+}
+
+/* ===============================================================
+   DOWNLOAD BANNER — full-width designed section placed just above
+   the footer on Profile.html (and reusable anywhere else you want
+   a bigger, more prominent download call-to-action).
+   =============================================================== */
+.download-banner{
+    width:92%;
+    max-width:1300px;
+    margin:60px auto;
+    padding:50px 40px;
+    border-radius:26px;
+    background:linear-gradient(135deg,rgba(0,102,255,.18),rgba(0,230,118,.12)),rgba(20,20,25,.75);
+    border:1px solid rgba(255,255,255,.08);
+    backdrop-filter:blur(20px);
+    text-align:center;
+    position:relative;
+    overflow:hidden;
+}
+
+.download-banner::before{
+    content:"";
+    position:absolute;
+    top:-60%;
+    left:50%;
+    transform:translateX(-50%);
+    width:500px;
+    height:500px;
+    background:radial-gradient(circle,rgba(0,102,255,.25),transparent 70%);
+    pointer-events:none;
+}
+
+.download-banner-icon{
+    font-size:44px;
+    margin-bottom:14px;
+}
+
+.download-banner h2{
+    font-size:28px;
+    margin-bottom:12px;
+    font-weight:800;
+    position:relative;
+}
+
+.download-banner p{
+    font-size:15px;
+    color:#cfcfcf;
+    max-width:480px;
+    margin:0 auto 28px;
+    line-height:1.7;
+    position:relative;
+}
+
+.download-btn-large{
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    padding:16px 42px;
+    border-radius:50px;
+    background:linear-gradient(135deg,#00c853,#00e676);
+    color:#04210f;
+    font-size:16px;
+    font-weight:800;
+    text-decoration:none;
+    box-shadow:0 8px 25px rgba(0,230,118,.4);
+    transition:.35s;
+    position:relative;
+}
+
+.download-btn-large:hover{
+    transform:translateY(-6px);
+    box-shadow:0 12px 34px rgba(0,230,118,.7);
+}
+
+@media (max-width:600px){
+    .download-banner{ padding:36px 22px; }
+    .download-banner h2{ font-size:22px; }
+    .download-btn, .download-btn-large{ padding:13px 26px; font-size:14px; }
+}
