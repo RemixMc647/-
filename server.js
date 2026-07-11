@@ -81,6 +81,19 @@ app.use(cors({
 const PUBLIC_DIR = __dirname;
 app.use(express.static(PUBLIC_DIR));
 
+// ---- ANDROID APP (APK) DOWNLOAD ----
+// The APK is hosted as a GitHub Release asset (not in the repo/git
+// history — GitHub Releases support large binaries without bloating
+// git or hitting the repo's file-size limits). This route just
+// redirects to that asset so the button link on the front-end never
+// has to change even if you publish a newer release under a new tag —
+// just update the URL below.
+const APK_RELEASE_URL = 'https://github.com/RemixMc647/Remix-Nexus/releases/download/v1.0.0/RemixNexus.apk';
+
+app.get('/download/app', (req, res) => {
+  res.redirect(APK_RELEASE_URL);
+});
+
 // ---- DATABASE ----
 if (MONGODB_URI) {
   mongoose.connect(MONGODB_URI)
