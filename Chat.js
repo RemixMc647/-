@@ -1025,4 +1025,8 @@ adjustChatShellHeight();
    INIT
 ----------------------------------------------------------- */
 renderRooms();
+<<<<<<< HEAD
 renderMessages();
+=======
+renderMessages();
+>>>>>>> e49109d3673588e03ebeeab6d7236b7db27ef4e2

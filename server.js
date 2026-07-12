@@ -103,7 +103,20 @@ if (MONGODB_URI) {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: FRONTEND_ORIGIN,
+    // Use the same allow-list as the Express/REST CORS config above,
+    // instead of only FRONTEND_ORIGIN. Without this, the Socket.io
+    // connection (which is all of chat) gets rejected when it comes
+    // from the Android app's 'capacitor://localhost' / 'https://localhost'
+    // origin, even though those same origins are already allowed for
+    // regular API calls.
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log('Socket.io blocked by CORS:', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true
   },
   // Socket.io's default payload cap is 1MB, which is smaller than our
@@ -184,6 +197,11 @@ const dmSchema = new mongoose.Schema({
   mediaData: { type: String, default: null }, // data: URL, same approach as voice notes
   audioData: { type: String, default: null },  // data: URL for a recorded voice note
   audioDuration: { type: Number, default: 0 },
+  replyTo: {
+    id: { type: String, default: '' },
+    author: { type: String, default: '' },
+    text: { type: String, default: '' }
+  },
   time: { type: Date, default: Date.now },
   edited: { type: Boolean, default: false }
 });
@@ -685,6 +703,7 @@ app.get('/api/dm/:userId', dbGuard, authMiddleware, async (req, res) => {
       text: m.text,
       media: m.mediaType ? { type: m.mediaType, data: m.mediaData } : null,
       audio: m.audioData ? { data: m.audioData, duration: m.audioDuration } : null,
+      replyTo: (m.replyTo && m.replyTo.id) ? { id: m.replyTo.id, author: m.replyTo.author, text: m.replyTo.text } : null,
       time: m.time,
       edited: m.edited
     }));
@@ -910,6 +929,15 @@ io.on('connection', (socket) => {
     }
   });
 
+  // TYPING INDICATOR — purely ephemeral, nothing persisted. Broadcast to
+  // everyone else in the room (never back to the sender) so their client
+  // can show a "so-and-so is typing…" line, WhatsApp-style.
+  socket.on('chat:typing', ({ room, isTyping } = {}) => {
+    if (!room || typeof room !== 'string') return;
+    const username = socket.username || 'Someone';
+    socket.to(room).emit('chat:typing', { room, userId: socket.userId || null, username, isTyping: !!isTyping });
+  });
+
   // EDIT A MESSAGE — same ownership rule as delete: only the verified
   // author (authorId set from the JWT at send-time) can edit it, and a
   // guest-authored message (no authorId) can never be edited this way.
@@ -982,7 +1010,7 @@ io.on('connection', (socket) => {
 
   // DIRECT MESSAGES — only available to logged-in users, since a guest
   // has no persistent account for anyone to reply back to.
-  socket.on('dm:message', async ({ toUserId, text, media, audio }) => {
+  socket.on('dm:message', async ({ toUserId, text, media, audio, replyTo }) => {
     if (!socket.userId) return;
     if (!toUserId) return;
 
@@ -1023,6 +1051,14 @@ io.on('connection', (socket) => {
     try {
       const key = conversationKey(socket.userId, toUserId);
 
+      const sanitizedReplyTo = replyTo && typeof replyTo === 'object'
+        ? {
+            id: String(replyTo.id || '').slice(0, 60),
+            author: String(replyTo.author || '').slice(0, 40),
+            text: String(replyTo.text || '').slice(0, 200)
+          }
+        : null;
+
       const doc = await DirectMessage.create({
         participants: key,
         fromUserId: String(socket.userId),
@@ -1031,7 +1067,8 @@ io.on('connection', (socket) => {
         mediaType: hasMedia ? (isVideoMedia ? 'video' : 'image') : null,
         mediaData: hasMedia ? rawMediaData : null,
         audioData: hasAudio ? audio.data : null,
-        audioDuration: hasAudio ? Math.min(120, Math.max(0, Number(audio.duration) || 0)) : 0
+        audioDuration: hasAudio ? Math.min(120, Math.max(0, Number(audio.duration) || 0)) : 0,
+        replyTo: sanitizedReplyTo
       });
 
       const payload = {
@@ -1041,6 +1078,7 @@ io.on('connection', (socket) => {
         text: doc.text,
         media: hasMedia ? { type: doc.mediaType, data: doc.mediaData } : null,
         audio: hasAudio ? { data: doc.audioData, duration: doc.audioDuration } : null,
+        replyTo: (doc.replyTo && doc.replyTo.id) ? { id: doc.replyTo.id, author: doc.replyTo.author, text: doc.replyTo.text } : null,
         time: doc.time
       };
 
@@ -1049,6 +1087,13 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('DM send error:', err);
     }
+  });
+
+  // TYPING INDICATOR (DM) — relayed straight to the other person's
+  // personal room (all of their tabs/devices), never persisted.
+  socket.on('dm:typing', ({ toUserId, isTyping } = {}) => {
+    if (!socket.userId || !toUserId) return;
+    io.to('user:' + toUserId).emit('dm:typing', { fromUserId: String(socket.userId), isTyping: !!isTyping });
   });
 
   // EDIT A DM — same ownership rule as room chat: only the verified

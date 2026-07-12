@@ -30,6 +30,134 @@ let me = null;
 let contacts = [];
 let activeContact = null; // { id, username, avatar, ... }
 let activeMessages = [];
+let dmReplyingTo = null; // { id, author, text }
+
+// Reply preview bar isn't part of the original Contacts.html, so it's
+// built here at runtime and inserted right above the message form —
+// same trick Chat.js uses for its reply preview.
+let dmReplyPreviewEl = null;
+let dmReplyPreviewAuthorEl = null;
+let dmReplyPreviewTextEl = null;
+if (dmMessageForm) {
+  dmReplyPreviewEl = document.createElement('div');
+  dmReplyPreviewEl.id = 'dmReplyPreview';
+  dmReplyPreviewEl.className = 'reply-preview';
+  dmReplyPreviewEl.style.cssText = 'display:none;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-left:3px solid currentColor;opacity:0.9;';
+
+  const textWrap = document.createElement('div');
+  dmReplyPreviewAuthorEl = document.createElement('div');
+  dmReplyPreviewAuthorEl.className = 'reply-preview-author';
+  dmReplyPreviewAuthorEl.style.cssText = 'font-weight:600;font-size:0.85em;';
+  dmReplyPreviewTextEl = document.createElement('div');
+  dmReplyPreviewTextEl.className = 'reply-preview-text';
+  dmReplyPreviewTextEl.style.cssText = 'font-size:0.85em;opacity:0.8;';
+  textWrap.appendChild(dmReplyPreviewAuthorEl);
+  textWrap.appendChild(dmReplyPreviewTextEl);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.id = 'dmCancelReplyBtn';
+  cancelBtn.textContent = '✕';
+  cancelBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:1em;';
+  cancelBtn.addEventListener('click', clearDmReplyTarget);
+
+  dmReplyPreviewEl.appendChild(textWrap);
+  dmReplyPreviewEl.appendChild(cancelBtn);
+  dmMessageForm.insertAdjacentElement('beforebegin', dmReplyPreviewEl);
+}
+
+// "So-and-so is typing…" line, WhatsApp-style — built at runtime and
+// inserted right above the message form, same as the reply preview.
+let dmTypingIndicatorEl = document.getElementById('dmTypingIndicator');
+if (!dmTypingIndicatorEl && dmMessageForm) {
+  dmTypingIndicatorEl = document.createElement('div');
+  dmTypingIndicatorEl.id = 'dmTypingIndicator';
+  dmTypingIndicatorEl.className = 'typing-indicator';
+  dmTypingIndicatorEl.style.cssText = 'display:none;padding:4px 12px;font-size:0.85em;font-style:italic;opacity:0.75;';
+  dmMessageForm.insertAdjacentElement('beforebegin', dmTypingIndicatorEl);
+}
+
+function setDmReplyTarget(msg){
+  if (!msg || !msg.id) return;
+  dmReplyingTo = { id: String(msg.id), author: msg.author, text: msg.text };
+  if (dmReplyPreviewAuthorEl) dmReplyPreviewAuthorEl.textContent = msg.author;
+  if (dmReplyPreviewTextEl) dmReplyPreviewTextEl.textContent = msg.text.length > 120 ? msg.text.slice(0, 120) + '…' : msg.text;
+  if (dmReplyPreviewEl) dmReplyPreviewEl.style.display = 'flex';
+  if (dmMessageInput) dmMessageInput.focus();
+}
+
+function clearDmReplyTarget(){
+  dmReplyingTo = null;
+  if (dmReplyPreviewEl) dmReplyPreviewEl.style.display = 'none';
+}
+
+/* -----------------------------------------------------------
+   TYPING INDICATOR — shows only for the conversation currently open.
+   Purely visual, nothing persisted.
+----------------------------------------------------------- */
+let incomingTypingTimeout = null;
+const DM_TYPING_STALE_MS = 4000; // if no follow-up "still typing" arrives, assume they stopped
+
+function renderDmTypingIndicator(isTyping){
+  if (!dmTypingIndicatorEl) return;
+  if (!isTyping || !activeContact){
+    dmTypingIndicatorEl.style.display = 'none';
+    dmTypingIndicatorEl.textContent = '';
+    return;
+  }
+  dmTypingIndicatorEl.textContent = `${activeContact.username} is typing…`;
+  dmTypingIndicatorEl.style.display = 'block';
+}
+
+function handleIncomingDmTyping({ fromUserId, isTyping } = {}){
+  if (!activeContact || String(fromUserId) !== String(activeContact.id)) return;
+
+  clearTimeout(incomingTypingTimeout);
+
+  if (!isTyping){
+    renderDmTypingIndicator(false);
+    return;
+  }
+
+  renderDmTypingIndicator(true);
+  incomingTypingTimeout = setTimeout(() => renderDmTypingIndicator(false), DM_TYPING_STALE_MS);
+}
+
+// Debounced outgoing "I'm typing" — fires isTyping:true right away, then
+// automatically sends isTyping:false after a pause with no keystrokes.
+let outgoingDmTypingActive = false;
+let outgoingDmTypingTimeout = null;
+const OUTGOING_DM_TYPING_IDLE_MS = 2000;
+
+function emitDmTyping(isTyping){
+  if (!socket || !activeContact) return;
+  socket.emit('dm:typing', { toUserId: activeContact.id, isTyping });
+}
+
+function handleDmTypingInput(){
+  if (!activeContact) return;
+  if (!outgoingDmTypingActive){
+    outgoingDmTypingActive = true;
+    emitDmTyping(true);
+  }
+  clearTimeout(outgoingDmTypingTimeout);
+  outgoingDmTypingTimeout = setTimeout(() => {
+    outgoingDmTypingActive = false;
+    emitDmTyping(false);
+  }, OUTGOING_DM_TYPING_IDLE_MS);
+}
+
+function stopDmTypingNow(){
+  clearTimeout(outgoingDmTypingTimeout);
+  if (outgoingDmTypingActive){
+    outgoingDmTypingActive = false;
+    emitDmTyping(false);
+  }
+}
+
+if (dmMessageInput){
+  dmMessageInput.addEventListener('input', handleDmTypingInput);
+}
 
 function escapeHTML(str){
   const div = document.createElement('div');
@@ -173,6 +301,16 @@ function renderDMMessages(){
       bodyBlock = `<span class="msg-text">${escapeHTML(m.text)}</span>`;
     }
 
+    const replyBlock = m.replyTo
+      ? `<div class="msg-quote">
+           <span class="msg-quote-author">${escapeHTML(m.replyTo.author)}</span>
+           <span class="msg-quote-text">${escapeHTML(m.replyTo.text)}</span>
+         </div>`
+      : '';
+
+    const replyText = m.text || (hasAudio ? '🎤 Voice note' : (hasMedia ? (m.media.type === 'video' ? '🎬 Video' : '🖼️ Photo') : ''));
+    const authorName = isMe ? (me.username || 'You') : (activeContact ? activeContact.username : '');
+
     // Voice notes and media messages can't be edited, only deleted —
     // same rule as room chat.
     const editBtn = (isMe && !hasMedia && !hasAudio)
@@ -180,7 +318,9 @@ function renderDMMessages(){
       : '';
 
     return `
-      <div class="msg ${isMe ? 'me' : ''}" data-id="${m.id}">
+      <div class="msg ${isMe ? 'me' : ''}" data-id="${m.id}" data-author="${escapeHTML(authorName)}" data-text="${escapeHTML(replyText)}">
+        <span class="msg-reply-icon" title="Reply">↩</span>
+        ${replyBlock}
         <span class="msg-author">${isMe ? 'You' : escapeHTML(activeContact.username)}</span>
         ${bodyBlock}
         <span class="msg-time">${new Date(m.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}${m.edited ? ' · edited' : ''}</span>
@@ -244,6 +384,9 @@ async function openContact(contactId, fallback){
 
   activeContact = contact;
   clearUnreadContact(contactId);
+  clearDmReplyTarget();
+  renderDmTypingIndicator(false);
+  clearTimeout(incomingTypingTimeout);
   renderContactHeader(contact);
   renderContactList();
 
@@ -287,6 +430,13 @@ contactListEl.addEventListener('click', (e) => {
 });
 
 dmMessagesEl.addEventListener('click', (e) => {
+  const replyIcon = e.target.closest('.msg-reply-icon');
+  if (replyIcon){
+    const msgEl = replyIcon.closest('.msg');
+    if (msgEl) setDmReplyTarget({ id: msgEl.dataset.id, author: msgEl.dataset.author, text: msgEl.dataset.text });
+    return;
+  }
+
   const editBtn = e.target.closest('.msg-edit-btn');
   const deleteBtn = e.target.closest('.msg-delete-btn');
   if (!editBtn && !deleteBtn) return;
@@ -314,6 +464,55 @@ dmMessagesEl.addEventListener('click', (e) => {
   }
 });
 
+// Right-click (desktop) also starts a reply — same convenience Chat.js offers.
+dmMessagesEl.addEventListener('contextmenu', (e) => {
+  const msgEl = e.target.closest('.msg');
+  if (!msgEl) return;
+  e.preventDefault();
+  setDmReplyTarget({ id: msgEl.dataset.id, author: msgEl.dataset.author, text: msgEl.dataset.text });
+});
+
+// Swipe-left-to-reply on touch devices — same gesture as room chat.
+let dmTouchState = null; // { msgEl, startX, startY, active }
+const DM_SWIPE_TRIGGER_PX = 60;
+const DM_SWIPE_MAX_PX = 90;
+
+dmMessagesEl.addEventListener('touchstart', (e) => {
+  const msgEl = e.target.closest('.msg');
+  if (!msgEl) return;
+  const touch = e.touches[0];
+  dmTouchState = { msgEl, startX: touch.clientX, startY: touch.clientY, active: false };
+}, { passive: true });
+
+dmMessagesEl.addEventListener('touchmove', (e) => {
+  if (!dmTouchState) return;
+  const touch = e.touches[0];
+  const deltaX = touch.clientX - dmTouchState.startX;
+  const deltaY = touch.clientY - dmTouchState.startY;
+
+  if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5 && deltaX < 0){
+    dmTouchState.active = true;
+    const clamped = Math.max(deltaX, -DM_SWIPE_MAX_PX);
+    dmTouchState.msgEl.style.transform = `translateX(${clamped}px)`;
+  }
+}, { passive: true });
+
+dmMessagesEl.addEventListener('touchend', () => {
+  if (!dmTouchState) return;
+  const { msgEl, active } = dmTouchState;
+
+  const transform = msgEl.style.transform;
+  const match = /translateX\((-?\d+(\.\d+)?)px\)/.exec(transform);
+  const deltaX = match ? parseFloat(match[1]) : 0;
+  msgEl.style.transform = '';
+
+  if (active && deltaX <= -DM_SWIPE_TRIGGER_PX){
+    setDmReplyTarget({ id: msgEl.dataset.id, author: msgEl.dataset.author, text: msgEl.dataset.text });
+  }
+
+  dmTouchState = null;
+});
+
 function handleDmEdited({ messageId, text }){
   const target = activeMessages.find(m => String(m.id) === String(messageId));
   if (!target) return;
@@ -333,8 +532,14 @@ dmMessageForm.addEventListener('submit', (e) => {
   const text = dmMessageInput.value.trim();
   if (!text || !activeContact || !socket) return;
 
-  socket.emit('dm:message', { toUserId: activeContact.id, text });
+  stopDmTypingNow();
+  socket.emit('dm:message', {
+    toUserId: activeContact.id,
+    text,
+    replyTo: dmReplyingTo ? { id: dmReplyingTo.id, author: dmReplyingTo.author, text: dmReplyingTo.text } : null
+  });
   dmMessageInput.value = '';
+  clearDmReplyTarget();
 });
 
 /* -----------------------------------------------------------
@@ -409,8 +614,10 @@ async function sendDmMedia(file){
   socket.emit('dm:message', {
     toUserId: activeContact.id,
     text: '',
-    media: { type: isVideo ? 'video' : 'image', data: dataUrl }
+    media: { type: isVideo ? 'video' : 'image', data: dataUrl },
+    replyTo: dmReplyingTo ? { id: dmReplyingTo.id, author: dmReplyingTo.author, text: dmReplyingTo.text } : null
   });
+  clearDmReplyTarget();
 }
 
 if (dmAttachBtn && dmMediaInput){
@@ -530,8 +737,10 @@ async function sendDmVoiceNote(blob, durationSeconds){
   socket.emit('dm:message', {
     toUserId: activeContact.id,
     text: '',
-    audio: { data: dataUrl, duration: durationSeconds }
+    audio: { data: dataUrl, duration: durationSeconds },
+    replyTo: dmReplyingTo ? { id: dmReplyingTo.id, author: dmReplyingTo.author, text: dmReplyingTo.text } : null
   });
+  clearDmReplyTarget();
 }
 
 if (dmVoiceBtn){
@@ -605,6 +814,7 @@ function handleIncomingDM(payload){
     socket.on('dm:message', handleIncomingDM);
     socket.on('dm:message:edited', handleDmEdited);
     socket.on('dm:message:deleted', handleDmDeleted);
+    socket.on('dm:typing', handleIncomingDmTyping);
     socket.on('chat:error', (payload) => {
       if (payload && payload.message) window.alert(payload.message);
     });

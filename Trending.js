@@ -8,7 +8,7 @@
 const YT_CHANNEL_HANDLE = '@remixmc-d6v';
 
 const VIDEOS = [
-  { file: './#minecraft.mp4', title: 'Minecraft Clip #1', meta: '🎮 Community clip', badge: 'NEW' },
+  { file: './bb33d572bdb2d31307897d7ba1242181.mp4', title: 'Minecraft Clip #1', meta: '🎮 Community clip', badge: 'NEW' },
   { file: './#minecraft (1).mp4', title: 'Minecraft Clip #2', meta: '🎮 Community clip', badge: 'HOT' },
   { file: './#minecraft (2).mp4', title: 'Minecraft Clip #3', meta: '🎮 Community clip', badge: 'CLIP' },
 ];
