@@ -103,7 +103,20 @@ if (MONGODB_URI) {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: FRONTEND_ORIGIN,
+    // Use the same allow-list as the Express/REST CORS config above,
+    // instead of only FRONTEND_ORIGIN. Without this, the Socket.io
+    // connection (which is all of chat) gets rejected when it comes
+    // from the Android app's 'capacitor://localhost' / 'https://localhost'
+    // origin, even though those same origins are already allowed for
+    // regular API calls.
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log('Socket.io blocked by CORS:', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true
   },
   // Socket.io's default payload cap is 1MB, which is smaller than our
