@@ -1,4 +1,4 @@
- /* ===========================
+/* ===========================
    REMIXMC — CHAT PAGE
    =========================== */
 
@@ -12,35 +12,33 @@
     align-items:start;
 }
 
-/* Desktop/laptop: pin the whole chat panel to the leftover viewport height
-   (set via --chat-shell-height in Chat.js) so a long conversation scrolls
-   *inside* the panel instead of stretching the whole page. Mobile/tablet
-   is left untouched — Chat.js skips setting the variable below 821px. */
-@media(min-width:821px){
-    .chat-shell{
-        height:var(--chat-shell-height, calc(100vh - 260px));
-        align-items:stretch;
-    }
+/* Chat panel is pinned to the leftover viewport height (set via
+   --chat-shell-height in Chat.js/Contacts.js) at every screen size, so a
+   long conversation scrolls *inside* the panel instead of stretching the
+   whole page — no page-level scrolling, app-style. */
+.chat-shell{
+    height:var(--chat-shell-height, calc(100vh - 260px));
+    align-items:stretch;
+}
 
-    .chat-rooms{
-        display:flex;
-        flex-direction:column;
-        overflow:hidden;
-    }
+.chat-rooms{
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+}
 
-    .room-list{
-        flex:1;
-        max-height:none;
-    }
+.room-list{
+    flex:1;
+    max-height:none;
+}
 
-    .chat-main{
-        height:100%;
-        min-height:0;
-    }
+.chat-main{
+    height:100%;
+    min-height:0;
+}
 
-    .messages{
-        max-height:none;
-    }
+.messages{
+    max-height:none;
 }
 
 .chat-rooms{
@@ -51,10 +49,94 @@
     padding:20px;
 }
 
+.chat-rooms-title-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:14px;
+}
+
 .chat-rooms-title{
     font-size:16px;
-    margin-bottom:14px;
+    margin-bottom:0;
     color:#a9c4ff;
+}
+
+.create-room-btn{
+    flex-shrink:0;
+    border:none;
+    border-radius:20px;
+    background:rgba(0,102,255,.18);
+    color:#a9c4ff;
+    font-size:12px;
+    font-weight:700;
+    padding:7px 12px;
+    cursor:pointer;
+    transition:.2s;
+}
+
+.create-room-btn:hover{
+    background:#0066ff;
+    color:#fff;
+}
+
+.back-btn{
+    display:none; /* only shown on mobile, inside the active conversation — see mobile rules below */
+    flex-shrink:0;
+    border:none;
+    background:rgba(255,255,255,.06);
+    color:#fff;
+    width:34px;
+    height:34px;
+    border-radius:50%;
+    font-size:16px;
+    cursor:pointer;
+    align-items:center;
+    justify-content:center;
+    transition:.2s;
+}
+
+.back-btn:hover{
+    background:rgba(0,102,255,.25);
+}
+
+.room-item-delete{
+    background:none;
+    border:none;
+    color:rgba(255,255,255,.35);
+    font-size:13px;
+    cursor:pointer;
+    flex-shrink:0;
+    padding:2px;
+    line-height:1;
+    transition:.2s;
+}
+
+.room-item-delete:hover{
+    color:#ff5b5b;
+    transform:scale(1.15);
+}
+
+.room-item-name-wrap{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    min-width:0;
+}
+
+.room-item-name-wrap span{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.room-item-custom-tag{
+    font-size:9px;
+    text-transform:uppercase;
+    letter-spacing:.4px;
+    color:#8a9bc4;
+    flex-shrink:0;
 }
 
 .room-list{
@@ -605,6 +687,40 @@
 
 @media(max-width:820px){
     .chat-shell{ grid-template-columns:1fr; }
+
+    /* Only one panel — the room/contact list OR the open conversation —
+       is ever shown at once, like WhatsApp/Snapchat. Chat.js/Contacts.js
+       toggle these two classes on .chat-shell. Until a room/contact is
+       actively open, .view-list is the default. */
+    .chat-shell.view-list .chat-main,
+    .chat-shell:not(.view-conversation) .chat-main{ display:none; }
+    .chat-shell.view-conversation .chat-rooms{ display:none; }
+    .chat-shell.view-conversation .chat-main{ display:flex; }
+
+    .chat-shell.view-conversation .back-btn{ display:flex; }
+
+    /* App-style full-screen page: the nav bar stays (it's this site's
+       navigation between Chat/Contacts/Search/etc — the equivalent of a
+       WhatsApp tab bar), but the footer and any page-level scroll are
+       removed so the room list / conversation is the entire screen with
+       no scrolling except inside the message or room list itself. */
+    body.app-shell-page{
+        height:100dvh;
+        height:100svh; /* fallback for older WebViews that don't support dvh */
+        overflow:hidden;
+    }
+
+    body.app-shell-page .footer{
+        display:none;
+    }
+
+    body.app-shell-page .chat-shell{
+        margin:10px auto;
+        height:var(--chat-shell-height, calc(100dvh - 140px));
+    }
+}
+
+@media(max-width:820px){
     .chat-rooms{ order:2; }
     .chat-main{ order:1; }
 }
@@ -616,7 +732,10 @@
     .chat-shell{ width:96%; margin:12px auto 50px; gap:14px; }
 
     .chat-rooms{ padding:14px; }
-    .chat-rooms-title{ font-size:14px; margin-bottom:10px; }
+    .chat-rooms-title{ font-size:14px; margin-bottom:0; }
+    .chat-rooms-title-row{ margin-bottom:10px; }
+    .create-room-btn{ font-size:11px; padding:6px 10px; }
+    .back-btn{ width:30px; height:30px; font-size:14px; }
 
     .room-item{ padding:10px 12px; font-size:13px; }
     .room-count{ font-size:10px; padding:2px 7px; }

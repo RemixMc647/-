@@ -82,12 +82,16 @@ content="https://atremix-nexus-194v.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc
 <section class="chat-shell">
 
   <aside class="chat-rooms">
-    <h2 class="chat-rooms-title">Rooms</h2>
+    <div class="chat-rooms-title-row">
+      <h2 class="chat-rooms-title">Rooms</h2>
+      <button type="button" id="createRoomBtn" class="create-room-btn" title="Create a new room">➕ New</button>
+    </div>
     <div id="roomList" class="room-list"></div>
   </aside>
 
   <main class="chat-main">
     <div class="chat-header">
+      <button type="button" id="backToRoomsBtn" class="back-btn" title="Back to rooms" aria-label="Back to rooms">←</button>
       <h2 id="activeRoomName">Just Chatting Lounge</h2>
       <span id="connectionBadge" class="pill-badge">Connecting…</span>
     </div>

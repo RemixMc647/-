@@ -6,8 +6,13 @@ message any of them privately, one-to-one, like a DM.
 
 const API_BASE = 'https://remix-nexus-production.up.railway.app';
 
+// Marks this as a full-screen, app-style page on phones/tablets — see the
+// mobile rules in Chat.css (shared with Contacts.css). Desktop is unaffected.
+document.body.classList.add('app-shell-page');
+
 const loggedOutEl = document.getElementById('contacts-loggedout');
 const shellEl = document.getElementById('contacts-shell');
+const dmBackBtn = document.getElementById('dmBackBtn');
 
 const contactListEl = document.getElementById('contactList');
 const activeContactNameEl = document.getElementById('activeContactName');
@@ -173,6 +178,61 @@ function formatDuration(seconds){
 }
 
 /* -----------------------------------------------------------
+   MOBILE NAVIGATION — WhatsApp/Snapchat-style: on a phone/tablet only
+   one panel (the contact list, or an open conversation) is visible at a
+   time. Desktop always shows both side by side, unaffected — the CSS
+   classes below only do anything under Chat.css's 820px breakpoint.
+----------------------------------------------------------- */
+function setMobileView(view){
+  if (!shellEl) return;
+  shellEl.classList.remove('view-list', 'view-conversation');
+  shellEl.classList.add(view === 'conversation' ? 'view-conversation' : 'view-list');
+}
+
+if (dmBackBtn){
+  dmBackBtn.addEventListener('click', () => setMobileView('list'));
+}
+
+/* -----------------------------------------------------------
+   LAYOUT FIX — same idea as Chat.js: pin the panel's height to the real
+   leftover viewport space at every screen size, so the contact list /
+   conversation fills the screen with no page-level scrolling.
+----------------------------------------------------------- */
+const DESKTOP_BREAKPOINT = 821;
+
+function adjustChatShellHeight(){
+  const header = document.querySelector('.nav-bar');
+  const footer = document.querySelector('.footer');
+  const shell = document.querySelector('.chat-shell');
+  if (!header || !shell) return;
+
+  const isMobile = window.innerWidth < DESKTOP_BREAKPOINT;
+
+  const headerBottom = header.getBoundingClientRect().bottom;
+  const footerHeight = (!isMobile && footer) ? footer.offsetHeight : 0; // footer is hidden on mobile
+  const shellStyles = getComputedStyle(shell);
+  const shellMarginTop = parseFloat(shellStyles.marginTop) || 0;
+  const shellMarginBottom = parseFloat(shellStyles.marginBottom) || 0;
+  const buffer = isMobile ? 10 : 20;
+
+  const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+  const available = viewportHeight
+    - headerBottom
+    - shellMarginTop
+    - shellMarginBottom
+    - footerHeight
+    - buffer;
+
+  document.documentElement.style.setProperty('--chat-shell-height', Math.max(available, isMobile ? 320 : 480) + 'px');
+}
+
+window.addEventListener('resize', adjustChatShellHeight);
+window.addEventListener('load', adjustChatShellHeight);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', adjustChatShellHeight);
+adjustChatShellHeight();
+
+/* -----------------------------------------------------------
    UNREAD COUNTS + DESKTOP NOTIFICATIONS
    The badge is per-contact (shown on their name in the sidebar). The
    desktop notification fires for any incoming DM whenever the tab isn't
@@ -229,6 +289,7 @@ function notifyNewDM(payload, otherId){
     n.onclick = () => {
       window.focus();
       openContact(otherId, contact ? { username: contact.username, avatar: contact.avatar } : { username: name });
+      setMobileView('conversation');
       n.close();
     };
   } catch (err) {
@@ -427,6 +488,7 @@ contactListEl.addEventListener('click', (e) => {
   const item = e.target.closest('.contact-item');
   if (!item) return;
   openContact(item.dataset.id);
+  setMobileView('conversation');
 });
 
 dmMessagesEl.addEventListener('click', (e) => {
@@ -826,9 +888,14 @@ function handleIncomingDM(payload){
   const params = new URLSearchParams(window.location.search);
   const uid = params.get('uid');
   if (uid && uid !== String(me.id)){
+    setMobileView('conversation');
     openContact(uid, {
       username: params.get('username') || '',
       avatar: params.get('avatar') || ''
     });
+  } else {
+    // Start on the contact list, same as opening WhatsApp fresh, until
+    // someone actually taps a conversation.
+    setMobileView('list');
   }
 })();

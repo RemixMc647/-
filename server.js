@@ -38,6 +38,21 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
 // FRONTEND_ORIGIN, then to a relative link if neither is set.
 const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL || (FRONTEND_ORIGIN !== '*' ? FRONTEND_ORIGIN : '');
 
+// ---- SITE OWNER(S) ----
+// The only accounts allowed to delete a user-created room. Set as a
+// comma-separated list of user IDs and/or usernames in your .env, e.g.
+// OWNER_USER_IDS=64f...,650... and/or OWNER_USERNAMES=YourName,CoOwnerName
+// Anyone can CREATE a room; only these accounts can DELETE one.
+const OWNER_USER_IDS = (process.env.OWNER_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+const OWNER_USERNAMES = (process.env.OWNER_USERNAMES || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+function isRoomOwner(user) {
+  if (!user) return false;
+  if (OWNER_USER_IDS.includes(String(user.id))) return true;
+  if (user.username && OWNER_USERNAMES.includes(String(user.username).toLowerCase())) return true;
+  return false;
+}
+
 let mailTransporter = null;
 if (nodemailer && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
   mailTransporter = nodemailer.createTransport({
@@ -219,6 +234,34 @@ const roomParticipantSchema = new mongoose.Schema({
 roomParticipantSchema.index({ roomId: 1, userId: 1 }, { unique: true });
 
 const RoomParticipant = mongoose.model('RoomParticipant', roomParticipantSchema);
+
+// ---- ROOM MODEL (user-created rooms) ----
+// The "default" rooms (Just Chatting, etc.) live client-side in rooms.js
+// and never appear here. This model only holds rooms a logged-in user has
+// created themselves — the WhatsApp-"create a group" style feature.
+// `createdBy` is null for nothing in this model (every doc here is
+// user-created); it's kept so we always know who can be credited/blamed
+// for a room, even though only an owner account can actually delete one.
+const customRoomSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  createdBy: { type: String, required: true },
+  createdByUsername: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const CustomRoom = mongoose.model('CustomRoom', customRoomSchema);
+
+function publicRoom(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    createdBy: r.createdBy,
+    createdByUsername: r.createdByUsername,
+    createdAt: r.createdAt,
+    isCustom: true
+  };
+}
 
 // ---- ROOM MESSAGE MODEL ----
 // Room chat used to live only in an in-memory Map, which meant every
@@ -408,7 +451,10 @@ app.get('/api/me', dbGuard, authMiddleware, async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });
     }
-    res.json({ user: publicUser(user) });
+    // isOwner only ever appears on a user's own /api/me response — never on
+    // publicUser() elsewhere — so this doesn't leak who the owner is to
+    // other people looking at a profile.
+    res.json({ user: { ...publicUser(user), isOwner: isRoomOwner({ id: user._id, username: user.username }) } });
   } catch (err) {
     console.error('Get user error:', err);
     res.status(500).json({ error: 'Something went wrong.' });
@@ -712,6 +758,84 @@ app.get('/api/dm/:userId', dbGuard, authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Get DM history error:', err);
     res.status(500).json({ error: 'Something went wrong.' });
+  }
+});
+
+// ---- CUSTOM (USER-CREATED) ROOMS ----
+// Anyone logged in can create a room — same idea as creating a group on
+// WhatsApp. Only a site-owner account (see isRoomOwner above) can delete
+// one. Default rooms aren't stored here at all, so they're never at risk.
+app.get('/api/rooms', dbGuard, async (req, res) => {
+  try {
+    const rooms = await CustomRoom.find().sort({ createdAt: 1 });
+    res.json({ rooms: rooms.map(publicRoom) });
+  } catch (err) {
+    console.error('List rooms error:', err);
+    res.status(500).json({ error: 'Something went wrong.' });
+  }
+});
+
+app.post('/api/rooms', dbGuard, authMiddleware, async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Give your room a name.' });
+    }
+
+    const trimmed = name.trim().slice(0, 60);
+    if (trimmed.length < 2) {
+      return res.status(400).json({ error: 'Room names need to be at least 2 characters.' });
+    }
+
+    const existing = await CustomRoom.findOne({ name: trimmed });
+    if (existing) {
+      return res.status(409).json({ error: 'A room with that name already exists.' });
+    }
+
+    const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '') || 'room';
+    const id = 'r-' + slug + '-' + crypto.randomBytes(3).toString('hex');
+
+    const user = await User.findById(req.user.id);
+    const room = await CustomRoom.create({
+      id,
+      name: trimmed,
+      createdBy: String(req.user.id),
+      createdByUsername: user ? user.username : (req.user.username || '')
+    });
+
+    const payload = publicRoom(room);
+    io.emit('room:created', { room: payload }); // everyone's sidebar updates live, no refresh needed
+    res.status(201).json({ room: payload });
+  } catch (err) {
+    console.error('Create room error:', err);
+    res.status(500).json({ error: 'Something went wrong creating that room.' });
+  }
+});
+
+app.delete('/api/rooms/:id', dbGuard, authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const requester = { id: req.user.id, username: user ? user.username : req.user.username };
+
+    if (!isRoomOwner(requester)) {
+      return res.status(403).json({ error: 'Only the site owner can delete a room.' });
+    }
+
+    const room = await CustomRoom.findOne({ id: req.params.id });
+    if (!room) {
+      return res.status(404).json({ error: 'That room no longer exists.' });
+    }
+
+    await room.deleteOne();
+    await RoomMessage.deleteMany({ room: room.id }); // clean up its messages too
+    await RoomParticipant.deleteMany({ roomId: room.id });
+
+    io.emit('room:deleted', { id: room.id });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete room error:', err);
+    res.status(500).json({ error: 'Something went wrong deleting that room.' });
   }
 });
 

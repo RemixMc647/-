@@ -6,11 +6,17 @@ Talks to the Express + Socket.io server hosted on Railway.
 console.log('DEBUG window.AUTH exists?', !!window.AUTH);
 console.log('DEBUG AUTH.getToken() at socket-creation time:', window.AUTH ? AUTH.getToken() : 'no AUTH object');
 
+const API_BASE = "https://remix-nexus-production.up.railway.app";
+
 const socket = io("https://remix-nexus-production.up.railway.app", {
   auth: { token: window.AUTH ? AUTH.getToken() : null }
 });
 
 console.log('DEBUG socket.auth immediately after creation:', socket.auth);
+
+// Marks this as a full-screen, app-style page on phones/tablets — see the
+// mobile rules in Chat.css. Desktop is unaffected.
+document.body.classList.add('app-shell-page');
 
 /* -----------------------------------------------------------
    ROOMS (DEFAULT_ROOMS comes from rooms.js, loaded before this file)
@@ -60,9 +66,11 @@ function getMyUserId(){
 /* -----------------------------------------------------------
    STATE
 ----------------------------------------------------------- */
+let customRooms = []; // rooms created by users at runtime — see fetchCustomRooms() below
 let rooms = getRooms();
 const params = new URLSearchParams(window.location.search);
-let activeRoomId = (params.get('room') && rooms.some(r => r.id === params.get('room')))
+const hadExplicitRoomParam = !!(params.get('room') && rooms.some(r => r.id === params.get('room')));
+let activeRoomId = hadExplicitRoomParam
   ? params.get('room')
   : (rooms[0]?.id || 'lounge');
 
@@ -72,6 +80,9 @@ const activeRoomNameEl = document.getElementById('activeRoomName');
 const messageForm = document.getElementById('messageForm');
 const messageInput = document.getElementById('messageInput');
 const connectionBadge = document.getElementById('connectionBadge');
+const chatShellEl = document.querySelector('.chat-shell');
+const backToRoomsBtn = document.getElementById('backToRoomsBtn');
+const createRoomBtn = document.getElementById('createRoomBtn');
 
 const replyPreview = document.getElementById('replyPreview');
 const replyPreviewAuthor = document.getElementById('replyPreviewAuthor');
@@ -135,6 +146,143 @@ function formatDuration(seconds){
 }
 
 /* -----------------------------------------------------------
+   MOBILE NAVIGATION — WhatsApp/Snapchat-style: on a phone/tablet only
+   one panel (the room list, or an open conversation) is visible at a
+   time. Desktop always shows both side by side, unaffected — the CSS
+   classes below only do anything under Chat.css's 820px breakpoint.
+----------------------------------------------------------- */
+function setMobileView(view){
+  if (!chatShellEl) return;
+  chatShellEl.classList.remove('view-list', 'view-conversation');
+  chatShellEl.classList.add(view === 'conversation' ? 'view-conversation' : 'view-list');
+}
+
+function openRoomConversation(roomId){
+  switchRoom(roomId);
+  setMobileView('conversation');
+}
+
+if (backToRoomsBtn){
+  backToRoomsBtn.addEventListener('click', () => setMobileView('list'));
+}
+
+// Land straight in a conversation only if the URL explicitly asked for one
+// (e.g. a notification click or a shared link) — otherwise start on the
+// room list, same as opening WhatsApp fresh.
+setMobileView(hadExplicitRoomParam ? 'conversation' : 'list');
+
+/* -----------------------------------------------------------
+   CUSTOM ROOMS — anyone logged in can create a room (like starting a
+   WhatsApp group); only a site-owner account can delete one. The fixed
+   DEFAULT_ROOMS set always stays, custom rooms are layered on top and
+   kept in sync for everyone live via the room:created/room:deleted
+   socket events further down.
+----------------------------------------------------------- */
+let isSiteOwner = false;
+
+function rebuildRoomList(){
+  rooms = [...DEFAULT_ROOMS, ...customRooms];
+}
+
+async function fetchCustomRooms(){
+  try {
+    const res = await fetch(API_BASE + '/api/rooms');
+    if (!res.ok) return;
+    const data = await res.json();
+    customRooms = (data.rooms || []).map(r => ({
+      id: r.id, name: r.name, isCustom: true,
+      createdBy: r.createdBy, createdByUsername: r.createdByUsername
+    }));
+    rebuildRoomList();
+    renderRooms();
+    subscribeToKnownRooms();
+
+    // A URL like Chat.html?room=r-abc123 might point at a custom room that
+    // didn't exist yet at the very first render above — catch it now.
+    const requestedRoom = params.get('room');
+    if (requestedRoom && requestedRoom !== activeRoomId && rooms.some(r => r.id === requestedRoom)){
+      openRoomConversation(requestedRoom);
+    }
+  } catch (err) {
+    console.error('Could not load custom rooms:', err);
+  }
+}
+
+// Only this account's own /api/me response says whether it's a site
+// owner — this is what decides whether the delete button shows up on
+// custom rooms for this particular person.
+async function fetchOwnerStatus(){
+  const token = window.AUTH ? AUTH.getToken() : null;
+  if (!token) return;
+  try {
+    const res = await fetch(API_BASE + '/api/me', { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) return;
+    const data = await res.json();
+    isSiteOwner = !!(data.user && data.user.isOwner);
+    renderRooms();
+  } catch (err) {
+    console.error('Could not check owner status:', err);
+  }
+}
+
+async function createRoom(){
+  if (!window.AUTH || !AUTH.isLoggedIn || !AUTH.isLoggedIn()){
+    alert('Log in first to create a room.');
+    return;
+  }
+
+  const name = window.prompt('Name your new room (everyone will be able to join it):');
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+
+  try {
+    const res = await fetch(API_BASE + '/api/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + AUTH.getToken() },
+      body: JSON.stringify({ name: trimmed })
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok){
+      alert(data.error || 'Could not create that room.');
+      return;
+    }
+
+    // The room:created socket event (below) adds it to everyone's list,
+    // including ours — we just jump straight into it once that lands.
+    openRoomConversation(data.room.id);
+  } catch (err) {
+    alert('Could not reach the server to create that room.');
+  }
+}
+
+if (createRoomBtn){
+  createRoomBtn.addEventListener('click', createRoom);
+}
+
+async function requestDeleteRoom(roomId){
+  if (!roomId) return;
+  if (!window.AUTH || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) return;
+  if (!confirm('Delete this room for everyone? This can\'t be undone.')) return;
+
+  try {
+    const res = await fetch(API_BASE + '/api/rooms/' + encodeURIComponent(roomId), {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + AUTH.getToken() }
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok){
+      alert(data.error || 'Could not delete that room.');
+    }
+    // On success, the room:deleted socket event (below) removes it from
+    // everyone's list, including ours.
+  } catch (err) {
+    alert('Could not reach the server to delete that room.');
+  }
+}
+
+/* -----------------------------------------------------------
    UNREAD COUNTS + DESKTOP NOTIFICATIONS
    The badge count is per-room (shown on the room name in the sidebar).
    The desktop notification fires for any new message, in any room,
@@ -191,7 +339,7 @@ function notifyNewRoomMessage(message, roomId){
     });
     n.onclick = () => {
       window.focus();
-      switchRoom(roomId);
+      openRoomConversation(roomId);
       n.close();
     };
   } catch (err) {
@@ -326,10 +474,20 @@ function renderRooms(){
   const unread = getUnreadCounts();
   roomListEl.innerHTML = rooms.map(r => {
     const count = unread[r.id] || 0;
+    const isCustom = !!r.isCustom;
+    const deleteBtn = (isCustom && isSiteOwner)
+      ? `<button type="button" class="room-item-delete" data-room="${escapeHTML(r.id)}" title="Delete this room">🗑</button>`
+      : '';
     return `
     <div class="room-item ${r.id === activeRoomId ? 'active' : ''}" data-room="${r.id}">
-      <span>${escapeHTML(r.name)}</span>
-      ${count > 0 ? `<span class="room-count">${count > 99 ? '99+' : count}</span>` : ''}
+      <span class="room-item-name-wrap">
+        <span>${escapeHTML(r.name)}</span>
+        ${isCustom ? '<span class="room-item-custom-tag">Custom</span>' : ''}
+      </span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+        ${count > 0 ? `<span class="room-count">${count > 99 ? '99+' : count}</span>` : ''}
+        ${deleteBtn}
+      </span>
     </div>
   `;
   }).join('');
@@ -674,9 +832,16 @@ messagesEl.addEventListener('touchend', () => {
    EVENTS
 ----------------------------------------------------------- */
 roomListEl.addEventListener('click', (e) => {
+  const deleteBtn = e.target.closest('.room-item-delete');
+  if (deleteBtn){
+    e.stopPropagation();
+    requestDeleteRoom(deleteBtn.dataset.room);
+    return;
+  }
+
   const item = e.target.closest('.room-item');
   if (!item) return;
-  switchRoom(item.dataset.room);
+  openRoomConversation(item.dataset.room);
 });
 
 messageForm.addEventListener('submit', (e) => {
@@ -723,6 +888,25 @@ if (socket){
   });
 
   socket.on('chat:typing', handleIncomingTyping);
+
+  socket.on('room:created', ({ room } = {}) => {
+    if (!room || !room.id || customRooms.some(r => r.id === room.id)) return;
+    customRooms.push({ id: room.id, name: room.name, isCustom: true, createdBy: room.createdBy, createdByUsername: room.createdByUsername });
+    rebuildRoomList();
+    renderRooms();
+    subscribeToKnownRooms(); // start receiving broadcasts for the new room too
+  });
+
+  socket.on('room:deleted', ({ id } = {}) => {
+    if (!id) return;
+    customRooms = customRooms.filter(r => r.id !== id);
+    rebuildRoomList();
+    if (activeRoomId === id){
+      openRoomConversation(rooms[0]?.id || 'lounge');
+      setMobileView('list');
+    }
+    renderRooms();
+  });
 
   if (socket.connected) { socket.emit('chat:join', { room: activeRoomId }); subscribeToKnownRooms(); }
 }
@@ -982,51 +1166,51 @@ if (socket){
 }
 
 /* -----------------------------------------------------------
-   DESKTOP LAYOUT FIX — keep the chat panel's height pinned to the
-   real leftover viewport space so long conversations scroll inside
-   the panel instead of growing the whole page. Mobile/tablet keeps
-   its original natural-page-scroll behavior untouched.
+   LAYOUT FIX — keep the chat panel's height pinned to the real leftover
+   viewport space, at every screen size, so a long conversation scrolls
+   *inside* the panel instead of growing the whole page. On mobile the
+   footer is hidden (see Chat.css/app-shell-page), so this effectively
+   makes the room list / conversation fill the entire screen with no
+   page-level scrolling — app-style.
 ----------------------------------------------------------- */
 const DESKTOP_BREAKPOINT = 821;
 
 function adjustChatShellHeight(){
-  if (window.innerWidth < DESKTOP_BREAKPOINT){
-    document.documentElement.style.removeProperty('--chat-shell-height');
-    return;
-  }
-
   const header = document.querySelector('.nav-bar');
   const footer = document.querySelector('.footer');
   const shell = document.querySelector('.chat-shell');
-  if (!header || !footer || !shell) return;
+  if (!header || !shell) return;
+
+  const isMobile = window.innerWidth < DESKTOP_BREAKPOINT;
 
   const headerBottom = header.getBoundingClientRect().bottom;
-  const footerHeight = footer.offsetHeight;
+  const footerHeight = (!isMobile && footer) ? footer.offsetHeight : 0; // footer is hidden on mobile
   const shellStyles = getComputedStyle(shell);
   const shellMarginTop = parseFloat(shellStyles.marginTop) || 0;
   const shellMarginBottom = parseFloat(shellStyles.marginBottom) || 0;
-  const buffer = 20; // a little breathing room so nothing touches the footer
+  const buffer = isMobile ? 10 : 20; // a little breathing room so nothing touches the footer/edge
 
-  const available = window.innerHeight
+  const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+  const available = viewportHeight
     - headerBottom
     - shellMarginTop
     - shellMarginBottom
     - footerHeight
     - buffer;
 
-  document.documentElement.style.setProperty('--chat-shell-height', Math.max(available, 480) + 'px');
+  document.documentElement.style.setProperty('--chat-shell-height', Math.max(available, isMobile ? 320 : 480) + 'px');
 }
 
 window.addEventListener('resize', adjustChatShellHeight);
 window.addEventListener('load', adjustChatShellHeight);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', adjustChatShellHeight);
 adjustChatShellHeight();
 
 /* -----------------------------------------------------------
    INIT
 ----------------------------------------------------------- */
 renderRooms();
-<<<<<<< HEAD
 renderMessages();
-=======
-renderMessages();
->>>>>>> e49109d3673588e03ebeeab6d7236b7db27ef4e2
+fetchCustomRooms();
+fetchOwnerStatus();
