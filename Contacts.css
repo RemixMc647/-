@@ -7,12 +7,20 @@
 .contact-item{
     display:flex;
     align-items:center;
+    justify-content:space-between;
     gap:12px;
     padding:10px 12px;
     border-radius:14px;
     cursor:pointer;
     transition:.2s;
     background:rgba(255,255,255,.03);
+}
+
+.contact-item-info{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    min-width:0; /* lets contact-name actually truncate instead of pushing the badge off-screen */
 }
 
 .contact-item:hover{
@@ -39,6 +47,7 @@
 .contact-name{
     font-size:14px;
     font-weight:600;
+    min-width:0;
     white-space:nowrap;
     overflow:hidden;
     text-overflow:ellipsis;
