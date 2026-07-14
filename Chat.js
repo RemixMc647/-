@@ -1267,6 +1267,35 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', adju
 adjustChatShellHeight();
 
 /* -----------------------------------------------------------
+   VOICE / VIDEO CALLS (calls.js — shared with Contacts.js)
+----------------------------------------------------------- */
+function getMyAvatar(){
+  const user = window.AUTH ? AUTH.getUser() : null;
+  return (user && user.avatar) ? user.avatar : '🎮';
+}
+
+if (window.RemixCalls) {
+  RemixCalls.init(socket, {
+    getMyUserId,
+    getMyUsername: getUsername,
+    getMyAvatar
+  });
+
+  const roomVoiceCallBtn = document.getElementById('roomVoiceCallBtn');
+  const roomVideoCallBtn = document.getElementById('roomVideoCallBtn');
+
+  function startActiveRoomCall(type){
+    const room = rooms.find(r => r.id === activeRoomId);
+    RemixCalls.startRoomCall(activeRoomId, room ? room.name : 'Room', type);
+  }
+
+  if (roomVoiceCallBtn) roomVoiceCallBtn.addEventListener('click', () => startActiveRoomCall('voice'));
+  if (roomVideoCallBtn) roomVideoCallBtn.addEventListener('click', () => startActiveRoomCall('video'));
+} else {
+  console.error('RemixCalls (calls.js) failed to load — call buttons will not work.');
+}
+
+/* -----------------------------------------------------------
    INIT
 ----------------------------------------------------------- */
 renderRooms();
