@@ -32,8 +32,13 @@ try { nodemailer = require('nodemailer'); } catch (err) { /* not installed — t
 // env var to the ENTIRE contents of your Firebase service-account JSON file
 // (Firebase console → Project settings → Service accounts → Generate new
 // private key), pasted as a single-line string.
-let admin = null;
-try { admin = require('firebase-admin'); } catch (err) { console.warn('⚠️  firebase-admin require failed (package likely not installed):', err.message); }
+let initializeApp = null, cert = null, getMessaging = null;
+try {
+  ({ initializeApp, cert } = require('firebase-admin/app'));
+  ({ getMessaging } = require('firebase-admin/messaging'));
+} catch (err) {
+  console.warn('⚠️  firebase-admin require failed (package likely not installed):', err.message);
+}
 
 // TEMPORARY DEBUG LOG — remove once FIREBASE_SERVICE_ACCOUNT is confirmed working.
 // Prints length + first/last 10 characters only, never the actual secret.
@@ -48,10 +53,12 @@ try { admin = require('firebase-admin'); } catch (err) { console.warn('⚠️  f
 }
 
 let firebaseReady = false;
-if (admin && process.env.FIREBASE_SERVICE_ACCOUNT) {
+let messagingClient = null;
+if (initializeApp && cert && process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    const firebaseApp = initializeApp({ credential: cert(serviceAccount) });
+    messagingClient = getMessaging(firebaseApp);
     firebaseReady = true;
     console.log('✅ Firebase Admin initialized — push notifications are live.');
   } catch (err) {
@@ -1044,7 +1051,7 @@ async function sendPushToUser(userId, { title, body, data = {} } = {}) {
     const stringData = {};
     Object.entries(data).forEach(([k, v]) => { stringData[k] = String(v); });
 
-    const response = await admin.messaging().sendEachForMulticast({
+    const response = await messagingClient.sendEachForMulticast({
       notification: { title: String(title || 'Remix Nexus'), body: String(body || '') },
       data: stringData,
       tokens: user.pushTokens
