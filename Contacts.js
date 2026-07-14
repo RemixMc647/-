@@ -421,6 +421,9 @@ async function loadContacts(){
 function renderContactHeader(contact){
   activeContactNameEl.textContent = contact.username;
 
+  const dmCallButtonsEl = document.getElementById('dmCallButtons');
+  if (dmCallButtonsEl) dmCallButtonsEl.style.display = 'flex';
+
   if (contact.avatar){
     activeContactAvatarEl.textContent = contact.avatar;
     activeContactAvatarEl.style.display = 'flex';
@@ -939,8 +942,33 @@ function handleIncomingDM(payload){
     socket.on('chat:error', (payload) => {
       if (payload && payload.message) window.alert(payload.message);
     });
+
+    if (window.RemixCalls){
+      // Use init() (not attachSocket()) so our getMyUserId/getMyUsername/getMyAvatar
+      // context actually gets registered — attachSocket() only forwards the socket
+      // and reuses whatever context was set by a previous init() call, which on
+      // this page never happened.
+      RemixCalls.init(socket, {
+        getMyUserId: () => (me && me.id) ? String(me.id) : null,
+        getMyUsername: () => (me && me.username) ? me.username : 'You',
+        getMyAvatar: () => (me && me.avatar) ? me.avatar : '🎮'
+      });
+    } else {
+      console.error('RemixCalls (calls.js) failed to load — call buttons will not work.');
+    }
   }
   updateDmBadge();
+
+  const dmVoiceCallBtn = document.getElementById('dmVoiceCallBtn');
+  const dmVideoCallBtn = document.getElementById('dmVideoCallBtn');
+
+  function startActiveContactCall(type){
+    if (!activeContact || !window.RemixCalls) return;
+    RemixCalls.startDMCall(activeContact.id, activeContact.username, activeContact.avatar, type);
+  }
+
+  if (dmVoiceCallBtn) dmVoiceCallBtn.addEventListener('click', () => startActiveContactCall('voice'));
+  if (dmVideoCallBtn) dmVideoCallBtn.addEventListener('click', () => startActiveContactCall('video'));
 
   await loadContacts();
 
