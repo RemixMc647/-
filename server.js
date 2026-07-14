@@ -35,6 +35,18 @@ try { nodemailer = require('nodemailer'); } catch (err) { /* not installed — t
 let admin = null;
 try { admin = require('firebase-admin'); } catch (err) { /* not installed — that's fine */ }
 
+// TEMPORARY DEBUG LOG — remove once FIREBASE_SERVICE_ACCOUNT is confirmed working.
+// Prints length + first/last 10 characters only, never the actual secret.
+{
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  console.log('🔍 DEBUG FIREBASE_SERVICE_ACCOUNT check:');
+  console.log('   - typeof:', typeof raw);
+  console.log('   - exists (truthy)?:', !!raw);
+  console.log('   - length:', raw ? raw.length : 'n/a');
+  console.log('   - first 10 chars:', raw ? JSON.stringify(raw.slice(0, 10)) : 'n/a');
+  console.log('   - last 10 chars:', raw ? JSON.stringify(raw.slice(-10)) : 'n/a');
+}
+
 let firebaseReady = false;
 if (admin && process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
