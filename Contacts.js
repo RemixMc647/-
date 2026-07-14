@@ -37,6 +37,14 @@ let activeContact = null; // { id, username, avatar, ... }
 let activeMessages = [];
 let dmReplyingTo = null; // { id, author, text }
 
+// PRESENCE — who's currently online, keyed by userId (always compared as
+// strings since ids can arrive as either numbers or strings from Mongo).
+let onlineUserIds = new Set();
+
+function isContactOnline(userId){
+  return onlineUserIds.has(String(userId));
+}
+
 // Reply preview bar isn't part of the original Contacts.html, so it's
 // built here at runtime and inserted right above the message form —
 // same trick Chat.js uses for its reply preview.
@@ -80,6 +88,29 @@ if (!dmTypingIndicatorEl && dmMessageForm) {
   dmTypingIndicatorEl.className = 'typing-indicator';
   dmTypingIndicatorEl.style.cssText = 'display:none;padding:4px 12px;font-size:0.85em;font-style:italic;opacity:0.75;';
   dmMessageForm.insertAdjacentElement('beforebegin', dmTypingIndicatorEl);
+}
+
+// "🟢 Online" line under the active contact's name in the header — built
+// at runtime and dropped into the existing header text column, right
+// after the "Member since…" subtext.
+let dmPresenceEl = document.getElementById('dmPresence');
+if (!dmPresenceEl && activeContactJoinedEl) {
+  dmPresenceEl = document.createElement('span');
+  dmPresenceEl.id = 'dmPresence';
+  dmPresenceEl.className = 'chat-header-subtext dm-presence';
+  dmPresenceEl.style.cssText = 'display:none;';
+  activeContactJoinedEl.insertAdjacentElement('afterend', dmPresenceEl);
+}
+
+function renderPresenceForHeader(){
+  if (!dmPresenceEl || !activeContact) return;
+  if (isContactOnline(activeContact.id)){
+    dmPresenceEl.textContent = '🟢 Online';
+    dmPresenceEl.style.display = 'block';
+    dmPresenceEl.style.color = '#3ddc84';
+  } else {
+    dmPresenceEl.style.display = 'none';
+  }
 }
 
 function setDmReplyTarget(msg){
@@ -302,6 +333,69 @@ function notifyNewDM(payload, otherId){
   }
 }
 
+/* -----------------------------------------------------------
+   PRESENCE — tracks which contacts are currently online and reflects it
+   in the sidebar (green dot) and the open conversation's header.
+
+   Expects the server to emit, over the same socket used for DMs:
+     'presence:online'  { userId }              — someone just connected
+     'presence:offline' { userId }               — someone just disconnected
+     'presence:online:list' { userIds: [...] }   — full snapshot, sent
+                                                    once right after connect
+   If your server doesn't have these yet, they're cheap to add: track
+   connected userIds in a Set/Map on the socket server, broadcast
+   'presence:online'/'presence:offline' on each socket connect/disconnect
+   (from the decoded auth token, same as the rest of this app's auth),
+   and on a fresh connection emit 'presence:online:list' back to just
+   that socket with the current Set.
+----------------------------------------------------------- */
+function handlePresenceOnline({ userId } = {}){
+  if (userId === undefined || userId === null) return;
+  onlineUserIds.add(String(userId));
+  renderContactList();
+  renderPresenceForHeader();
+  if (activeContact && String(activeContact.id) === String(userId)){
+    notifyContactOnline(activeContact);
+  }
+}
+
+function handlePresenceOffline({ userId } = {}){
+  if (userId === undefined || userId === null) return;
+  onlineUserIds.delete(String(userId));
+  renderContactList();
+  renderPresenceForHeader();
+}
+
+function handlePresenceOnlineList({ userIds } = {}){
+  onlineUserIds = new Set((userIds || []).map(String));
+  renderContactList();
+  renderPresenceForHeader();
+}
+
+// Desktop notification for "X is online" — only for the person you
+// currently have open, and only when you're not actively looking at the
+// tab (same foreground check the message notifications use), so it
+// doesn't fire constantly while you're mid-conversation with them.
+function notifyContactOnline(contact){
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (isAppInForeground()) return;
+
+  try {
+    const n = new Notification(contact.username, {
+      body: '🟢 is now online',
+      tag: 'presence:' + contact.id // replaces any earlier online-notification for this same person
+    });
+    n.onclick = () => {
+      window.focus();
+      openContact(contact.id, { username: contact.username, avatar: contact.avatar });
+      setMobileView('conversation');
+      n.close();
+    };
+  } catch (err) {
+    console.error('Notification error:', err);
+  }
+}
+
 // When the tab regains focus, whatever conversation is currently open
 // counts as "seen" again — clear its badge.
 function handleDmForegroundReturn(){
@@ -332,10 +426,11 @@ function renderContactList(){
 
   contactListEl.innerHTML = contacts.map(c => {
     const count = unread[c.id] || 0;
+    const online = isContactOnline(c.id);
     return `
     <div class="contact-item ${activeContact && activeContact.id === c.id ? 'active' : ''}" data-id="${c.id}">
       <span class="contact-item-info">
-        <span class="contact-avatar">${c.avatar || '🎮'}</span>
+        <span class="contact-avatar${online ? ' is-online' : ''}">${c.avatar || '🎮'}${online ? '<span class="online-dot" title="Online"></span>' : ''}</span>
         <span class="contact-name">${escapeHTML(c.username)}</span>
       </span>
       ${count > 0 ? `<span class="room-count">${count > 99 ? '99+' : count}</span>` : ''}
@@ -437,6 +532,8 @@ function renderContactHeader(contact){
   } else {
     activeContactJoinedEl.textContent = '';
   }
+
+  renderPresenceForHeader();
 }
 
 // `fallback` lets us open a conversation with someone who isn't in the
@@ -939,6 +1036,9 @@ function handleIncomingDM(payload){
     socket.on('dm:message:edited', handleDmEdited);
     socket.on('dm:message:deleted', handleDmDeleted);
     socket.on('dm:typing', handleIncomingDmTyping);
+    socket.on('presence:online', handlePresenceOnline);
+    socket.on('presence:offline', handlePresenceOffline);
+    socket.on('presence:online:list', handlePresenceOnlineList);
     socket.on('chat:error', (payload) => {
       if (payload && payload.message) window.alert(payload.message);
     });

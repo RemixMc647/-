@@ -541,9 +541,8 @@ app.get('/api/avatar-options', (req, res) => {
 // SAVE PUSH TOKEN (protected) — called once by the Android app right
 // after it registers for push notifications, so we know where to send
 // pushes for this user. $addToSet means calling this again with the same
-// token is harmless (no duplicates pile up). NOTE: nothing currently reads
-// these tokens to actually send a push — that logic (previously backed by
-// Firebase) was removed. Wire up a new push provider here if you add one.
+// token is harmless (no duplicates pile up). Read by sendPushToUser()
+// further down, which fires on new DMs and incoming calls via Firebase.
 app.post('/api/push-token', dbGuard, authMiddleware, async (req, res) => {
   try {
     const { token } = req.body;
@@ -1047,11 +1046,18 @@ function mediaPreviewServer(m) {
 // (their pushTokens list). Silently does nothing if Firebase isn't
 // configured, or the user has no saved tokens — never throws, so it's
 // always safe to fire-and-forget from inside a socket handler.
-async function sendPushToUser(userId, { title, body, data = {} } = {}) {
-  if (!firebaseReady || !userId) return;
+async function sendPushToUser(userId, { title, body, data = {}, channelId, priority } = {}) {
+  if (!firebaseReady) {
+    console.warn('[push] sendPushToUser called but firebaseReady=false — check FIREBASE_SERVICE_ACCOUNT.');
+    return;
+  }
+  if (!userId) return;
   try {
     const user = await User.findById(userId);
-    if (!user || !user.pushTokens || !user.pushTokens.length) return;
+    if (!user || !user.pushTokens || !user.pushTokens.length) {
+      console.warn('[push] No saved pushTokens for user', userId, '— the device never finished registering. Check that @capacitor/push-notifications is installed + synced on the native app, and that POST_NOTIFICATIONS permission was granted.');
+      return;
+    }
 
     // FCM data payloads must be flat string key/value pairs.
     const stringData = {};
@@ -1060,7 +1066,25 @@ async function sendPushToUser(userId, { title, body, data = {} } = {}) {
     const response = await messagingClient.sendEachForMulticast({
       notification: { title: String(title || 'Remix Nexus'), body: String(body || '') },
       data: stringData,
+      android: {
+        // Calls (and anything time-sensitive) need HIGH priority so FCM
+        // delivers immediately instead of batching/delaying for Doze —
+        // default priority can sit for minutes on a sleeping device.
+        priority: priority === 'high' ? 'high' : 'normal',
+        notification: {
+          // Must match a channel created natively (MainActivity) with
+          // IMPORTANCE_HIGH, or Android will show it silently in the shade
+          // instead of as a heads-up banner with sound.
+          channelId: channelId || 'default',
+          sound: 'default'
+        }
+      },
       tokens: user.pushTokens
+    });
+
+    console.log(`[push] Sent to ${user.pushTokens.length} token(s) for user ${userId}: ${response.successCount} succeeded, ${response.failureCount} failed.`);
+    response.responses.forEach((r, i) => {
+      if (!r.success) console.warn('[push] Token failed:', user.pushTokens[i], '-', r.error && r.error.code, r.error && r.error.message);
     });
 
     // Prune tokens FCM says are dead (app uninstalled, token rotated, etc.)
@@ -1555,7 +1579,9 @@ io.on('connection', (socket) => {
       sendPushToUser(toUserId, {
         title: `Incoming ${callType} call`,
         body: `${socket.username || 'Someone'} is calling you`,
-        data: { type: 'call', callId, fromUserId: String(socket.userId) }
+        data: { type: 'call', callId, fromUserId: String(socket.userId) },
+        channelId: 'incoming_calls',
+        priority: 'high'
       });
     }
   });

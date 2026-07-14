@@ -16,21 +16,35 @@ window.Capacitor.Plugins.PushNotifications is available.
   }
 
   async function sendTokenToServer(token) {
-    if (!window.AUTH || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) return;
+    if (!window.AUTH || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) {
+      console.warn('[push] Got an FCM token but AUTH says not logged in — token NOT sent to server.');
+      return;
+    }
     try {
-      await fetch(API_BASE + '/api/push-token', {
+      const res = await fetch(API_BASE + '/api/push-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + AUTH.getToken() },
         body: JSON.stringify({ token, platform: 'android' })
       });
+      if (!res.ok) {
+        console.error('[push] Server rejected push-token save, status:', res.status, await res.text().catch(() => ''));
+      } else {
+        console.log('[push] Device token saved to server OK.');
+      }
     } catch (err) {
-      console.error('Could not register push token:', err);
+      console.error('[push] Could not register push token (network error):', err);
     }
   }
 
   async function initPush() {
-    if (!isNativeApp()) return; // running in a normal browser — nothing to do
-    if (!window.AUTH || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) return; // only register once logged in
+    if (!isNativeApp()) {
+      console.warn('[push] window.Capacitor.Plugins.PushNotifications not found — either this isn\'t the native app, or @capacitor/push-notifications isn\'t installed/synced into the Android project.');
+      return;
+    }
+    if (!window.AUTH || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) {
+      console.log('[push] Not logged in yet — will not register for push until login.');
+      return;
+    }
 
     const { PushNotifications } = window.Capacitor.Plugins;
 
@@ -44,18 +58,19 @@ window.Capacitor.Plugins.PushNotifications is available.
       }
 
       if (!granted) {
-        console.log('Push permission not granted — notifications will stay off until the user enables them in Android settings.');
+        console.warn('[push] Push permission NOT granted — notifications stay off until enabled in Android settings. (Android 13+ also needs POST_NOTIFICATIONS declared in the manifest.)');
         return;
       }
 
       // Fires once Firebase hands back a device token — this is what the
       // server needs in order to target this specific device.
       PushNotifications.addListener('registration', (token) => {
+        console.log('[push] FCM registration token received, length:', token.value ? token.value.length : 0);
         sendTokenToServer(token.value);
       });
 
       PushNotifications.addListener('registrationError', (err) => {
-        console.error('Push registration error:', err);
+        console.error('[push] Push registration error (this is why no token ever gets saved):', err);
       });
 
       // App is open/foregrounded when the push arrives — Android won't show
@@ -63,7 +78,7 @@ window.Capacitor.Plugins.PushNotifications is available.
       // in-page Notification-style UI already used elsewhere, if you have
       // one. At minimum this keeps foreground behavior from going silent.
       PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('Push received while app open:', notification);
+        console.log('[push] Push received while app open:', notification);
       });
 
       // User tapped the system notification — route them to the right
@@ -71,7 +86,12 @@ window.Capacitor.Plugins.PushNotifications is available.
       // query param on load, so a simple redirect covers it.
       PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
         const data = action.notification.data || {};
-        if (data.type === 'dm' && data.fromUserId) {
+        if (data.type === 'call' && data.fromUserId) {
+          // The original call:invite socket event is long gone by the time a
+          // killed app relaunches, so we can't auto-resume the call — but we
+          // can drop the user straight into a callback with that person.
+          window.location.href = './Contacts.html?uid=' + encodeURIComponent(data.fromUserId) + '&callback=' + encodeURIComponent(data.callId || '');
+        } else if (data.type === 'dm' && data.fromUserId) {
           window.location.href = './Contacts.html?uid=' + encodeURIComponent(data.fromUserId);
         } else if (data.type === 'room' && data.roomId) {
           window.location.href = './Chat.html?room=' + encodeURIComponent(data.roomId);
