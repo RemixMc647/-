@@ -212,6 +212,35 @@ function escapeHTML(str){
   return div.innerHTML;
 }
 
+/* -----------------------------------------------------------
+   IMAGE LIGHTBOX — tap/click a shared photo to expand it full-screen
+----------------------------------------------------------- */
+const imageLightbox = document.getElementById('imageLightbox');
+const imageLightboxImg = document.getElementById('imageLightboxImg');
+const imageLightboxClose = document.getElementById('imageLightboxClose');
+
+function openImageLightbox(src){
+  if (!imageLightbox || !imageLightboxImg) return;
+  imageLightboxImg.src = src;
+  imageLightbox.style.display = 'flex';
+}
+
+function closeImageLightbox(){
+  if (!imageLightbox || !imageLightboxImg) return;
+  imageLightbox.style.display = 'none';
+  imageLightboxImg.src = '';
+}
+
+if (imageLightbox){
+  imageLightboxClose?.addEventListener('click', closeImageLightbox);
+  imageLightbox.addEventListener('click', (e) => {
+    if (e.target === imageLightbox) closeImageLightbox();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeImageLightbox();
+  });
+}
+
 function formatDuration(seconds){
   const total = Math.max(0, Math.round(seconds || 0));
   const m = Math.floor(total / 60);
@@ -562,6 +591,13 @@ contactListEl.addEventListener('click', (e) => {
 });
 
 dmMessagesEl.addEventListener('click', (e) => {
+  const zoomImg = e.target.closest('.media-note img');
+  if (zoomImg){
+    e.stopPropagation();
+    openImageLightbox(zoomImg.src);
+    return;
+  }
+
   const replyIcon = e.target.closest('.msg-reply-icon');
   if (replyIcon){
     const msgEl = replyIcon.closest('.msg');
