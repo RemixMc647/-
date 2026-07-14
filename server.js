@@ -1122,7 +1122,7 @@ function addGlobalOnline(socket) {
   const set = globalOnline.get(uid);
   const wasOffline = set.size === 0;
   set.add(socket.id);
-  if (wasOffline) io.emit('presence:update', { userId: uid, online: true });
+  if (wasOffline) io.emit('presence:online', { userId: uid });
 }
 
 function removeGlobalOnline(socket) {
@@ -1133,7 +1133,7 @@ function removeGlobalOnline(socket) {
   set.delete(socket.id);
   if (set.size === 0) {
     globalOnline.delete(uid);
-    io.emit('presence:update', { userId: uid, online: false });
+    io.emit('presence:offline', { userId: uid });
   }
 }
 
@@ -1170,7 +1170,7 @@ io.on('connection', (socket) => {
     // Tell just this newly-connected socket who's already online, so its
     // Contacts page can paint "online" labels immediately without waiting
     // for the next presence:update.
-    socket.emit('presence:snapshot', { online: Array.from(globalOnline.keys()) });
+    socket.emit('presence:online:list', { userIds: Array.from(globalOnline.keys()) });
   }
 
   socket.on('chat:join', async ({ room }) => {
