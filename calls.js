@@ -92,9 +92,20 @@ own coturn) to ICE_SERVERS below.
 
     muteBtn.addEventListener('click', toggleMute);
     cameraBtn.addEventListener('click', toggleCamera);
-    hangupBtn.addEventListener('click', () => endCall(true));
+    hangupBtn.addEventListener('click', hangUpWhicheverCall);
     acceptBtn.addEventListener('click', acceptIncoming);
     declineBtn.addEventListener('click', declineIncoming);
+  }
+
+  // The hang-up button is shared by both call types, but previously it only
+  // ever tore down a 1:1 `call` — a room call was left with `roomCall` still
+  // set (mic/camera still on, peer connections still open, server never
+  // notified). That stuck `roomCall` then made every future startRoomCall /
+  // startDMCall call silently no-op because of the `if (call || roomCall) return;`
+  // guards — i.e. the call button "worked once" and never again.
+  function hangUpWhicheverCall() {
+    if (roomCall) leaveRoomCallLocally(true);
+    else if (call) endCall(true);
   }
 
   function showOverlay(title, subtitle, avatar) {
