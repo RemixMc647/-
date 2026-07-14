@@ -57,6 +57,12 @@ let messagingClient = null;
 if (initializeApp && cert && process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    // Env vars are often pasted as a single line, which can leave the
+    // private_key's line breaks as literal "\n" two-char sequences instead
+    // of real newlines. cert() needs real newlines to parse the PEM key.
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     const firebaseApp = initializeApp({ credential: cert(serviceAccount) });
     messagingClient = getMessaging(firebaseApp);
     firebaseReady = true;
