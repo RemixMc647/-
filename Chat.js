@@ -614,6 +614,36 @@ function escapeHTML(str){
   return div.innerHTML;
 }
 
+/* -----------------------------------------------------------
+   IMAGE LIGHTBOX — tap/click a shared photo to expand it full-screen
+----------------------------------------------------------- */
+const imageLightbox = document.getElementById('imageLightbox');
+const imageLightboxImg = document.getElementById('imageLightboxImg');
+const imageLightboxClose = document.getElementById('imageLightboxClose');
+
+function openImageLightbox(src){
+  if (!imageLightbox || !imageLightboxImg) return;
+  imageLightboxImg.src = src;
+  imageLightbox.style.display = 'flex';
+}
+
+function closeImageLightbox(){
+  if (!imageLightbox || !imageLightboxImg) return;
+  imageLightbox.style.display = 'none';
+  imageLightboxImg.src = '';
+}
+
+if (imageLightbox){
+  imageLightboxClose?.addEventListener('click', closeImageLightbox);
+  // Clicking the dark backdrop (but not the image itself) also closes it.
+  imageLightbox.addEventListener('click', (e) => {
+    if (e.target === imageLightbox) closeImageLightbox();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeImageLightbox();
+  });
+}
+
 // Sends the person straight to Contacts.html with this user pre-selected,
 // so they can see the profile and start/continue a private conversation —
 // works even if this is the very first time these two have interacted.
@@ -739,6 +769,13 @@ function requestDeleteMessage(messageId){
 }
 
 messagesEl.addEventListener('click', (e) => {
+  const zoomImg = e.target.closest('.media-note img');
+  if (zoomImg){
+    e.stopPropagation();
+    openImageLightbox(zoomImg.src);
+    return;
+  }
+
   const authorLink = e.target.closest('.msg-author-link');
   if (authorLink){
     e.stopPropagation();
