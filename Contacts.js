@@ -19,9 +19,6 @@ const activeContactNameEl = document.getElementById('activeContactName');
 const activeContactAvatarEl = document.getElementById('activeContactAvatar');
 const activeContactJoinedEl = document.getElementById('activeContactJoined');
 const dmConnectionBadge = document.getElementById('dmConnectionBadge');
-const dmCallButtons = document.getElementById('dmCallButtons');
-const dmVoiceCallBtn = document.getElementById('dmVoiceCallBtn');
-const dmVideoCallBtn = document.getElementById('dmVideoCallBtn');
 const dmMessagesEl = document.getElementById('dmMessages');
 const dmMessageForm = document.getElementById('dmMessageForm');
 const dmMessageInput = document.getElementById('dmMessageInput');
@@ -39,49 +36,10 @@ let contacts = [];
 let activeContact = null; // { id, username, avatar, ... }
 let activeMessages = [];
 let dmReplyingTo = null; // { id, author, text }
-const onlineUserIds = new Set(); // populated from presence:snapshot / presence:update
-
-function isContactOnline(id){
-  return onlineUserIds.has(String(id));
-}
-
-function renderActiveContactPresence(){
-  if (!activeContact) return;
-  const onlineTag = document.getElementById('activeContactOnline');
-  if (!onlineTag) return;
-  const online = isContactOnline(activeContact.id);
-  onlineTag.textContent = online ? 'Online' : '';
-  onlineTag.style.display = online ? 'inline' : 'none';
-}
-
-function handlePresenceSnapshot({ online } = {}){
-  onlineUserIds.clear();
-  (online || []).forEach(id => onlineUserIds.add(String(id)));
-  renderContactList();
-  renderActiveContactPresence();
-}
-
-function handlePresenceUpdate({ userId, online } = {}){
-  if (!userId) return;
-  if (online) onlineUserIds.add(String(userId));
-  else onlineUserIds.delete(String(userId));
-  renderContactList();
-  renderActiveContactPresence();
-}
 
 // Reply preview bar isn't part of the original Contacts.html, so it's
 // built here at runtime and inserted right above the message form —
 // same trick Chat.js uses for its reply preview.
-// "Online" indicator next to the contact's name in the header — WhatsApp
-// style. Built at runtime so Contacts.html doesn't need to be touched
-// beyond the call buttons/back button already added.
-if (activeContactNameEl && !document.getElementById('activeContactOnline')) {
-  const onlineTag = document.createElement('span');
-  onlineTag.id = 'activeContactOnline';
-  onlineTag.style.cssText = 'display:none;font-size:11px;color:#22c55e;font-weight:600;margin-left:8px;';
-  activeContactNameEl.insertAdjacentElement('afterend', onlineTag);
-}
-
 let dmReplyPreviewEl = null;
 let dmReplyPreviewAuthorEl = null;
 let dmReplyPreviewTextEl = null;
@@ -210,35 +168,6 @@ function escapeHTML(str){
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
-}
-
-/* -----------------------------------------------------------
-   IMAGE LIGHTBOX — tap/click a shared photo to expand it full-screen
------------------------------------------------------------ */
-const imageLightbox = document.getElementById('imageLightbox');
-const imageLightboxImg = document.getElementById('imageLightboxImg');
-const imageLightboxClose = document.getElementById('imageLightboxClose');
-
-function openImageLightbox(src){
-  if (!imageLightbox || !imageLightboxImg) return;
-  imageLightboxImg.src = src;
-  imageLightbox.style.display = 'flex';
-}
-
-function closeImageLightbox(){
-  if (!imageLightbox || !imageLightboxImg) return;
-  imageLightbox.style.display = 'none';
-  imageLightboxImg.src = '';
-}
-
-if (imageLightbox){
-  imageLightboxClose?.addEventListener('click', closeImageLightbox);
-  imageLightbox.addEventListener('click', (e) => {
-    if (e.target === imageLightbox) closeImageLightbox();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeImageLightbox();
-  });
 }
 
 function formatDuration(seconds){
@@ -403,14 +332,10 @@ function renderContactList(){
 
   contactListEl.innerHTML = contacts.map(c => {
     const count = unread[c.id] || 0;
-    const online = isContactOnline(c.id);
     return `
     <div class="contact-item ${activeContact && activeContact.id === c.id ? 'active' : ''}" data-id="${c.id}">
       <span class="contact-item-info">
-        <span class="contact-avatar" style="position:relative;">
-          ${c.avatar || '🎮'}
-          ${online ? '<span style="position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;border-radius:50%;background:#22c55e;border:2px solid #0a0e17;"></span>' : ''}
-        </span>
+        <span class="contact-avatar">${c.avatar || '🎮'}</span>
         <span class="contact-name">${escapeHTML(c.username)}</span>
       </span>
       ${count > 0 ? `<span class="room-count">${count > 99 ? '99+' : count}</span>` : ''}
@@ -509,23 +434,6 @@ function renderContactHeader(contact){
   } else {
     activeContactJoinedEl.textContent = '';
   }
-
-  if (dmCallButtons) dmCallButtons.style.display = 'flex';
-  renderActiveContactPresence();
-}
-
-if (dmVoiceCallBtn){
-  dmVoiceCallBtn.addEventListener('click', () => {
-    if (!activeContact || !window.RemixCalls) return;
-    RemixCalls.startDMCall(activeContact.id, activeContact.username, activeContact.avatar, 'voice');
-  });
-}
-
-if (dmVideoCallBtn){
-  dmVideoCallBtn.addEventListener('click', () => {
-    if (!activeContact || !window.RemixCalls) return;
-    RemixCalls.startDMCall(activeContact.id, activeContact.username, activeContact.avatar, 'video');
-  });
 }
 
 // `fallback` lets us open a conversation with someone who isn't in the
@@ -590,18 +498,63 @@ contactListEl.addEventListener('click', (e) => {
   setMobileView('conversation');
 });
 
-dmMessagesEl.addEventListener('click', (e) => {
-  const zoomImg = e.target.closest('.media-note img');
-  if (zoomImg){
-    e.stopPropagation();
-    openImageLightbox(zoomImg.src);
-    return;
+/* -----------------------------------------------------------
+   IMAGE LIGHTBOX — tap a shared photo to view it full-size, the same
+   way WhatsApp/Instagram do. One shared overlay, reused for every image.
+----------------------------------------------------------- */
+let lightboxEl = null;
+let lightboxImgEl = null;
+
+function ensureLightbox(){
+  if (lightboxEl) return;
+
+  lightboxEl = document.createElement('div');
+  lightboxEl.className = 'image-lightbox';
+
+  lightboxImgEl = document.createElement('img');
+  lightboxImgEl.alt = 'Shared image';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'image-lightbox-close';
+  closeBtn.title = 'Close';
+  closeBtn.textContent = '✕';
+
+  lightboxEl.appendChild(lightboxImgEl);
+  lightboxEl.appendChild(closeBtn);
+  document.body.appendChild(lightboxEl);
+
+  function closeLightbox(){
+    lightboxEl.classList.remove('open');
+    lightboxImgEl.src = '';
   }
 
+  lightboxEl.addEventListener('click', (e) => {
+    if (e.target === lightboxEl) closeLightbox();
+  });
+  closeBtn.addEventListener('click', closeLightbox);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && lightboxEl.classList.contains('open')) closeLightbox();
+  });
+}
+
+function openLightbox(src){
+  ensureLightbox();
+  lightboxImgEl.src = src;
+  lightboxEl.classList.add('open');
+}
+
+dmMessagesEl.addEventListener('click', (e) => {
   const replyIcon = e.target.closest('.msg-reply-icon');
   if (replyIcon){
     const msgEl = replyIcon.closest('.msg');
     if (msgEl) setDmReplyTarget({ id: msgEl.dataset.id, author: msgEl.dataset.author, text: msgEl.dataset.text });
+    return;
+  }
+
+  const sharedImage = e.target.closest('.media-note img');
+  if (sharedImage){
+    openLightbox(sharedImage.src);
     return;
   }
 
@@ -983,19 +936,9 @@ function handleIncomingDM(payload){
     socket.on('dm:message:edited', handleDmEdited);
     socket.on('dm:message:deleted', handleDmDeleted);
     socket.on('dm:typing', handleIncomingDmTyping);
-    socket.on('presence:snapshot', handlePresenceSnapshot);
-    socket.on('presence:update', handlePresenceUpdate);
     socket.on('chat:error', (payload) => {
       if (payload && payload.message) window.alert(payload.message);
     });
-
-    if (window.RemixCalls){
-      RemixCalls.init(socket, {
-        getMyUserId: () => me ? me.id : null,
-        getMyUsername: () => me ? me.username : 'You',
-        getMyAvatar: () => me ? me.avatar : '🎮'
-      });
-    }
   }
   updateDmBadge();
 
