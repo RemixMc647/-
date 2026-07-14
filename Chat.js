@@ -88,35 +88,6 @@ const replyPreview = document.getElementById('replyPreview');
 const replyPreviewAuthor = document.getElementById('replyPreviewAuthor');
 const replyPreviewText = document.getElementById('replyPreviewText');
 const cancelReplyBtn = document.getElementById('cancelReplyBtn');
-const roomVoiceCallBtn = document.getElementById('roomVoiceCallBtn');
-const roomVideoCallBtn = document.getElementById('roomVideoCallBtn');
-
-if (window.RemixCalls){
-  RemixCalls.init(socket, {
-    getMyUserId: () => getMyUserId(),
-    getMyUsername: () => getUsername(),
-    getMyAvatar: () => (window.AUTH && AUTH.getUser() ? AUTH.getUser().avatar : '🎮')
-  });
-}
-
-function currentRoomName(){
-  const room = rooms.find(r => r.id === activeRoomId);
-  return room ? room.name : 'Room';
-}
-
-if (roomVoiceCallBtn){
-  roomVoiceCallBtn.addEventListener('click', () => {
-    if (!getMyUserId()){ alert('Log in first to start a call.'); return; }
-    RemixCalls.startRoomCall(activeRoomId, currentRoomName(), 'voice');
-  });
-}
-
-if (roomVideoCallBtn){
-  roomVideoCallBtn.addEventListener('click', () => {
-    if (!getMyUserId()){ alert('Log in first to start a call.'); return; }
-    RemixCalls.startRoomCall(activeRoomId, currentRoomName(), 'video');
-  });
-}
 
 // Online-users strip isn't part of the original Chat.html, so it's built
 // here at runtime and inserted into the existing .chat-header — this way
@@ -537,8 +508,7 @@ function renderMessages(){
 
   messagesEl.innerHTML = messages.map(m => {
     const isMe = m.author === me;
-    const isAuthor = !!(myUserId && m.authorId && String(m.authorId) === myUserId);
-    const canDelete = isAuthor || isSiteOwner;
+    const canDelete = !!(myUserId && m.authorId && String(m.authorId) === myUserId);
 
     const replyBlock = m.replyTo
       ? `<div class="msg-quote">
@@ -563,7 +533,7 @@ function renderMessages(){
 
     const replyText = m.text || (m.audio ? '🎤 Voice note' : (m.media ? (m.media.type === 'video' ? '🎬 Video' : '🖼️ Photo') : ''));
 
-    const canEdit = isAuthor && !m.audio && !m.media; // voice notes & media can't be edited, only text; only the real author can edit
+    const canEdit = canDelete && !m.audio && !m.media; // voice notes & media can't be edited, only text
     const isEditingThis = editingId === m.id;
 
     const deleteBlock = canDelete
@@ -612,36 +582,6 @@ function escapeHTML(str){
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
-}
-
-/* -----------------------------------------------------------
-   IMAGE LIGHTBOX — tap/click a shared photo to expand it full-screen
------------------------------------------------------------ */
-const imageLightbox = document.getElementById('imageLightbox');
-const imageLightboxImg = document.getElementById('imageLightboxImg');
-const imageLightboxClose = document.getElementById('imageLightboxClose');
-
-function openImageLightbox(src){
-  if (!imageLightbox || !imageLightboxImg) return;
-  imageLightboxImg.src = src;
-  imageLightbox.style.display = 'flex';
-}
-
-function closeImageLightbox(){
-  if (!imageLightbox || !imageLightboxImg) return;
-  imageLightbox.style.display = 'none';
-  imageLightboxImg.src = '';
-}
-
-if (imageLightbox){
-  imageLightboxClose?.addEventListener('click', closeImageLightbox);
-  // Clicking the dark backdrop (but not the image itself) also closes it.
-  imageLightbox.addEventListener('click', (e) => {
-    if (e.target === imageLightbox) closeImageLightbox();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeImageLightbox();
-  });
 }
 
 // Sends the person straight to Contacts.html with this user pre-selected,
@@ -768,14 +708,55 @@ function requestDeleteMessage(messageId){
   removeMessageLocally(activeRoomId, messageId);
 }
 
-messagesEl.addEventListener('click', (e) => {
-  const zoomImg = e.target.closest('.media-note img');
-  if (zoomImg){
-    e.stopPropagation();
-    openImageLightbox(zoomImg.src);
-    return;
+/* -----------------------------------------------------------
+   IMAGE LIGHTBOX — tap a shared photo to view it full-size, the same
+   way WhatsApp/Instagram do. One shared overlay, reused for every image.
+----------------------------------------------------------- */
+let lightboxEl = null;
+let lightboxImgEl = null;
+
+function ensureLightbox(){
+  if (lightboxEl) return;
+
+  lightboxEl = document.createElement('div');
+  lightboxEl.className = 'image-lightbox';
+
+  lightboxImgEl = document.createElement('img');
+  lightboxImgEl.alt = 'Shared image';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'image-lightbox-close';
+  closeBtn.title = 'Close';
+  closeBtn.textContent = '✕';
+
+  lightboxEl.appendChild(lightboxImgEl);
+  lightboxEl.appendChild(closeBtn);
+  document.body.appendChild(lightboxEl);
+
+  function closeLightbox(){
+    lightboxEl.classList.remove('open');
+    lightboxImgEl.src = '';
   }
 
+  // Tapping the dimmed background (not the image itself) closes it —
+  // clicking the image does nothing, same as every photo app.
+  lightboxEl.addEventListener('click', (e) => {
+    if (e.target === lightboxEl) closeLightbox();
+  });
+  closeBtn.addEventListener('click', closeLightbox);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && lightboxEl.classList.contains('open')) closeLightbox();
+  });
+}
+
+function openLightbox(src){
+  ensureLightbox();
+  lightboxImgEl.src = src;
+  lightboxEl.classList.add('open');
+}
+
+messagesEl.addEventListener('click', (e) => {
   const authorLink = e.target.closest('.msg-author-link');
   if (authorLink){
     e.stopPropagation();
@@ -812,6 +793,12 @@ messagesEl.addEventListener('click', (e) => {
 
     if (!confirm('Delete this message for everyone?')) return;
     requestDeleteMessage(messageId);
+    return;
+  }
+
+  const sharedImage = e.target.closest('.media-note img');
+  if (sharedImage){
+    openLightbox(sharedImage.src);
   }
 });
 
