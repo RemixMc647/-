@@ -342,7 +342,7 @@ const roomMessageSchema = new mongoose.Schema({
 roomMessageSchema.index({ room: 1, time: 1 });
 // TTL index: MongoDB automatically deletes a document 3 days after its
 // `time` value, regardless of server restarts/redeploys in between.
-roomMessageSchema.index({ time: 1 }, { expireAfterSeconds: 3 * 24 * 60 * 60 });
+roomMessageSchema.index({ time: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 });
 
 const RoomMessage = mongoose.model('RoomMessage', roomMessageSchema);
 

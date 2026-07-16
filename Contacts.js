@@ -113,6 +113,13 @@ function renderPresenceForHeader(){
   }
 }
 
+let touchStartX = 0;
+let touchCurrentX = 0;
+
+function isNativeApp() {
+    return !!window.Capacitor;
+}
+
 function setDmReplyTarget(msg){
   if (!msg || !msg.id) return;
   dmReplyingTo = { id: String(msg.id), author: msg.author, text: msg.text };
@@ -170,6 +177,10 @@ function emitDmTyping(isTyping){
   socket.emit('dm:typing', { toUserId: activeContact.id, isTyping });
 }
 
+function isNativeApp() {
+    return !!window.Capacitor;
+}
+
 function handleDmTypingInput(){
   if (!activeContact) return;
   if (!outgoingDmTypingActive){
@@ -183,12 +194,109 @@ function handleDmTypingInput(){
   }, OUTGOING_DM_TYPING_IDLE_MS);
 }
 
+function enableSwipeReply(messageElement, message){
+
+let moved = false;
+
+messageElement.addEventListener("touchstart",(e)=>{
+
+touchStartX = e.touches[0].clientX;
+moved = false;
+
+});
+
+messageElement.addEventListener("touchmove",(e)=>{
+
+touchCurrentX = e.touches[0].clientX;
+
+const distance = touchCurrentX - touchStartX;
+
+if(Math.abs(distance)>5){
+moved=true;
+}
+
+if(Math.abs(distance)<120){
+
+messageElement.style.transform=
+`translateX(${distance}px)`;
+
+}
+
+});
+
+messageElement.addEventListener("touchend",()=>{
+
+const distance = touchCurrentX-touchStartX;
+
+messageElement.style.transition=".2s";
+messageElement.style.transform="translateX(0px)";
+
+setTimeout(()=>{
+
+messageElement.style.transition="";
+
+},200);
+
+if(moved && Math.abs(distance)>80){
+
+setReplyTarget(message);
+
+navigator.vibrate?.(20);
+
+}
+
+});
+
+}
+
+function saveMessages(roomId, messages){
+
+    localStorage.setItem(
+        'remix-nexusMessages:' + roomId,
+        JSON.stringify(messages)
+    );
+
+    if(isNativeApp()){
+        localStorage.setItem(
+            'app-chat-backup:' + roomId,
+            JSON.stringify(messages)
+        );
+    }
+
+}
+
 function stopDmTypingNow(){
   clearTimeout(outgoingDmTypingTimeout);
   if (outgoingDmTypingActive){
     outgoingDmTypingActive = false;
     emitDmTyping(false);
   }
+}
+
+function getMessages(roomId){
+
+    try{
+
+        let raw = localStorage.getItem(
+            'remix-nexusMessages:' + roomId
+        );
+
+        if(isNativeApp()){
+
+            raw = localStorage.getItem(
+                'app-chat-backup:' + roomId
+            ) || raw;
+
+        }
+
+        return raw ? JSON.parse(raw) : [];
+
+    }catch{
+
+        return [];
+
+    }
+
 }
 
 if (dmMessageInput){
@@ -208,6 +316,11 @@ function formatDuration(seconds){
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+Object.keys(localStorage).forEach(key=>{
+    if(key.startsWith("remix-nexusMessages")){
+        localStorage.removeItem(key);
+    }
+});
 /* -----------------------------------------------------------
    MOBILE NAVIGATION — WhatsApp/Snapchat-style: on a phone/tablet only
    one panel (the contact list, or an open conversation) is visible at a
@@ -1086,3 +1199,25 @@ function handleIncomingDM(payload){
     setMobileView('list');
   }
 })();
+
+document.addEventListener("click",(e)=>{
+
+if(!replyPreview.contains(e.target)
+&&
+!messageInput.contains(e.target)){
+
+clearReplyTarget();
+
+}
+
+});
+
+document.addEventListener("keydown",(e)=>{
+
+if(e.key==="Escape"){
+
+clearReplyTarget();
+
+}
+
+});

@@ -96,7 +96,15 @@
     justify-content:center;
     transition:.2s;
 }
+.message{
 
+transition:
+transform .18s ease,
+background .18s ease;
+
+touch-action:pan-y;
+
+}
 .back-btn:hover{
     background:rgba(0,102,255,.25);
 }

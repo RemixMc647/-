@@ -10,18 +10,29 @@ location.href="index.html";
 
 };
 
-document.getElementById("clearChats").onclick=()=>{
+document.getElementById('clearChats').onclick = () => {
+  if (!confirm('Clear all chats on this device? This will not delete messages for other users.')) {
+    return;
+  }
 
-if(confirm("Clear every chat?")){
+  // Room chats
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith('remix-nexusMessages:')) {
+      localStorage.removeItem(key);
+    }
 
-localStorage.removeItem("remix-nexusMessages");
+    // DM chats
+    if (key.startsWith('remix-nexusDM')) {
+      localStorage.removeItem(key);
+    }
 
-localStorage.removeItem("remix-nexusUnreadRooms");
+    // Unread counters
+    if (key.startsWith('remix-nexusUnreadRooms:') ||
+        key.startsWith('remix-nexusUnreadContacts:')) {
+      localStorage.removeItem(key);
+    }
+  });
 
-localStorage.removeItem("remix-nexusUnreadContacts");
-
-alert("Chats cleared.");
-
-}
-
+  alert('All local chats have been cleared.');
+  location.reload();
 };

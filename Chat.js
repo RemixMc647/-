@@ -27,6 +27,90 @@ function getRooms(){
   return DEFAULT_ROOMS;
 }
 
+function getMessages(roomId){
+
+    try{
+
+        let raw = localStorage.getItem(
+            'remix-nexusMessages:' + roomId
+        );
+
+        if(isNativeApp()){
+
+            raw = localStorage.getItem(
+                'app-chat-backup:' + roomId
+            ) || raw;
+
+        }
+
+        return raw ? JSON.parse(raw) : [];
+
+    }catch{
+
+        return [];
+
+    }
+
+}
+
+function enableSwipeReply(messageElement, message){
+
+let moved = false;
+
+messageElement.addEventListener("touchstart",(e)=>{
+
+touchStartX = e.touches[0].clientX;
+moved = false;
+
+});
+
+messageElement.addEventListener("touchmove",(e)=>{
+
+touchCurrentX = e.touches[0].clientX;
+
+const distance = touchCurrentX - touchStartX;
+
+if(Math.abs(distance)>5){
+moved=true;
+}
+
+if(Math.abs(distance)<120){
+
+messageElement.style.transform=
+`translateX(${distance}px)`;
+
+}
+
+});
+
+messageElement.addEventListener("touchend",()=>{
+
+const distance = touchCurrentX-touchStartX;
+
+messageElement.style.transition=".2s";
+messageElement.style.transform="translateX(0px)";
+
+setTimeout(()=>{
+
+messageElement.style.transition="";
+
+},200);
+
+if(moved && Math.abs(distance)>80){
+
+setReplyTarget(message);
+
+navigator.vibrate?.(20);
+
+}
+
+});
+
+}
+
+let touchStartX = 0;
+let touchCurrentX = 0;
+
 // Local per-room message cache, used only so the sidebar can show a
 // message count and so switching rooms feels instant before history arrives.
 function getMessages(roomId){
@@ -38,6 +122,22 @@ function getMessages(roomId){
 
 function saveMessages(roomId, messages){
   localStorage.setItem('remix-nexusMessages:' + roomId, JSON.stringify(messages));
+}
+
+function saveMessages(roomId, messages){
+
+    localStorage.setItem(
+        'remix-nexusMessages:' + roomId,
+        JSON.stringify(messages)
+    );
+
+    if(isNativeApp()){
+        localStorage.setItem(
+            'app-chat-backup:' + roomId,
+            JSON.stringify(messages)
+        );
+    }
+
 }
 
 // Prefer the logged-in account's username. Otherwise, remember a
@@ -292,6 +392,10 @@ async function requestDeleteRoom(roomId){
 function unreadRoomsStorageKey(){
   const uid = getMyUserId();
   return 'remix-nexusUnreadRooms:' + (uid || 'guest');
+}
+
+function isNativeApp() {
+    return !!window.Capacitor;
 }
 
 function getUnreadCounts(){
@@ -1224,6 +1328,12 @@ if (socket){
   });
 }
 
+Object.keys(localStorage).forEach(key=>{
+    if(key.startsWith("remix-nexusMessages")){
+        localStorage.removeItem(key);
+    }
+});
+
 /* -----------------------------------------------------------
    LAYOUT FIX — keep the chat panel's height pinned to the real leftover
    viewport space, at every screen size, so a long conversation scrolls
@@ -1302,3 +1412,25 @@ renderRooms();
 renderMessages();
 fetchCustomRooms();
 fetchOwnerStatus();
+
+document.addEventListener("click",(e)=>{
+
+if(!replyPreview.contains(e.target)
+&&
+!messageInput.contains(e.target)){
+
+clearReplyTarget();
+
+}
+
+});
+
+document.addEventListener("keydown",(e)=>{
+
+if(e.key==="Escape"){
+
+clearReplyTarget();
+
+}
+
+});
