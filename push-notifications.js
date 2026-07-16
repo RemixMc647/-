@@ -15,6 +15,11 @@ window.Capacitor.Plugins.PushNotifications is available.
     return !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications);
   }
 
+  // Cached the moment 'registration' fires (see initPush below) — this is
+  // what lets logout clean up the token without needing to re-register,
+  // which Capacitor doesn't support anyway (there's no "get current token").
+  let cachedToken = null;
+
   async function sendTokenToServer(token) {
     if (!window.AUTH || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) {
       console.warn('[push] Got an FCM token but AUTH says not logged in — token NOT sent to server.');
@@ -66,6 +71,7 @@ window.Capacitor.Plugins.PushNotifications is available.
       // server needs in order to target this specific device.
       PushNotifications.addListener('registration', (token) => {
         console.log('[push] FCM registration token received, length:', token.value ? token.value.length : 0);
+        cachedToken = token.value;
         sendTokenToServer(token.value);
       });
 
@@ -113,21 +119,22 @@ window.Capacitor.Plugins.PushNotifications is available.
   // unchanged. Safe to skip if AUTH.logout doesn't exist.
   if (window.AUTH && typeof AUTH.logout === 'function') {
     const originalLogout = AUTH.logout.bind(AUTH);
-    AUTH.logout = async function (...args) {
-      if (isNativeApp()) {
+    AUTH.logout = function (...args) {
+      // Fire-and-forget on purpose: Settings.js/Profile.js call AUTH.logout()
+      // without awaiting it and redirect immediately afterward, so this has
+      // to survive page navigation on its own — that's what `keepalive`
+      // does (it tells the browser to finish the request even after the
+      // page that started it is gone). Using the token cached from the
+      // 'registration' listener above instead of re-registering, since
+      // Capacitor has no "get current token" call to re-fetch it with.
+      if (isNativeApp() && cachedToken && window.AUTH && AUTH.getToken && AUTH.getToken()) {
         try {
-          const { PushNotifications } = window.Capacitor.Plugins;
-          // Capacitor doesn't expose the current token directly; re-registering
-          // and reading it again here is the reliable way to get it for cleanup.
-          PushNotifications.addListener('registration', async (token) => {
-            try {
-              await fetch(API_BASE + '/api/push-token', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + AUTH.getToken() },
-                body: JSON.stringify({ token: token.value })
-              });
-            } catch (err) { /* not critical — token just goes stale and gets pruned server-side */ }
-          });
+          fetch(API_BASE + '/api/push-token', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + AUTH.getToken() },
+            body: JSON.stringify({ token: cachedToken }),
+            keepalive: true
+          }).catch(() => {}); // not critical — token just goes stale and gets pruned server-side
         } catch (err) { /* not critical */ }
       }
       return originalLogout(...args);
