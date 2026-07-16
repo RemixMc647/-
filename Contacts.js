@@ -1086,3 +1086,36 @@ function handleIncomingDM(payload){
     setMobileView('list');
   }
 })();
+const blockContactBtn = document.getElementById('blockContactBtn');
+
+async function handleBlockAction() {
+  if (!activeContact) return;
+  const targetId = activeContact.id;
+  
+  const confirmBlock = confirm(`Do you want to block ${activeContact.username}? You won't receive direct messages from each other.`);
+  if (!confirmBlock) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/users/block`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + AUTH.getToken()
+      },
+      body: JSON.stringify({ targetUserId: targetId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(`${activeContact.username} is now blocked.`);
+      location.reload(); // Refresh to clean layout and apply rules
+    } else {
+      alert(data.error || 'Could not block user.');
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+if (blockContactBtn) {
+  blockContactBtn.addEventListener('click', handleBlockAction);
+}

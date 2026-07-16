@@ -1655,3 +1655,142 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`🎮 𝕽𝖊𝖒𝖎𝖝 𝕹𝖊𝖝𝖚𝖘 server running on http://localhost:${PORT}`);
 });
+// ==========================================
+// 1. ADD BLOCK SCHEMA & PLATFORM TO MESSAGES
+// ==========================================
+
+// Add "platform" to your MessageSchema (inside server.js)
+const MessageSchema = new mongoose.Schema({
+  room: String,
+  senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  senderName: String,
+  senderAvatar: String,
+  text: String,
+  mediaUrl: String,
+  mediaType: String,
+  replyTo: { type: Object, default: null }, // { id, senderName, text }
+  platform: { type: String, enum: ['web', 'app'], default: 'web' }, // track web vs app
+  createdAt: { type: Date, default: Date.now }
+});
+// (Assuming you have a similar schema for Direct Messages / DMs)
+const DmMessageSchema = new mongoose.Schema({
+  senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  text: String,
+  mediaUrl: String,
+  mediaType: String,
+  replyTo: { type: Object, default: null },
+  platform: { type: String, enum: ['web', 'app'], default: 'web' },
+  createdAt: { type: Date, default: Date.now }
+});
+
+// Update UserSchema to support blocks (inside server.js)
+// Add blockedUsers array of ObjectIds
+const UserSchema = new mongoose.Schema({
+  username: { type: String, unique: true, required: true },
+  email: { type: String, unique: true, required: true },
+  password: { type: String, required: true },
+  avatar: { type: String, default: '🎮' },
+  blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  createdAt: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model('User', UserSchema);
+const Message = mongoose.model('Message', MessageSchema);
+const DmMessage = mongoose.model('DmMessage', DmMessageSchema);
+
+// ==========================================
+// 2. CRON / INTERVAL TO CLEAR WEB CHATS (1 WEEK)
+// ==========================================
+setInterval(async () => {
+  try {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    
+    // Delete room messages sent from web older than 1 week
+    const deletedRooms = await Message.deleteMany({
+      platform: 'web',
+      createdAt: { $lt: oneWeekAgo }
+    });
+    
+    // Delete DMs sent from web older than 1 week
+    const deletedDms = await DmMessage.deleteMany({
+      platform: 'web',
+      createdAt: { $lt: oneWeekAgo }
+    });
+    
+    console.log(`[Cleanup] Deleted expired web messages: Rooms: ${deletedRooms.deletedCount}, DMs: ${deletedDms.deletedCount}`);
+  } catch (err) {
+    console.error('Error running weekly web chat cleaner:', err);
+  }
+}, 24 * 60 * 60 * 1000); // Runs once every 24 hours
+
+// ==========================================
+// 3. SECURE BLOCKING API ENDPOINTS
+// ==========================================
+// POST /api/users/block
+app.post('/api/users/block', authMiddleware, async (req, res) => {
+  try {
+    const { targetUserId } = req.body;
+    if (!targetUserId) return res.status(400).json({ error: 'Target User ID required' });
+    
+    await User.findByIdAndUpdate(req.userId, {
+      $addToSet: { blockedUsers: targetUserId }
+    });
+    res.json({ success: true, message: 'User blocked successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/users/unblock
+app.post('/api/users/unblock', authMiddleware, async (req, res) => {
+  try {
+    const { targetUserId } = req.body;
+    if (!targetUserId) return res.status(400).json({ error: 'Target User ID required' });
+    
+    await User.findByIdAndUpdate(req.userId, {
+      $pull: { blockedUsers: targetUserId }
+    });
+    res.json({ success: true, message: 'User unblocked successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/users/blocked
+app.get('/api/users/blocked', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).populate('blockedUsers', 'username avatar');
+    res.json(user.blockedUsers || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ==========================================
+// 4. ADMIN & SENDER MESSAGE DELETION Logic
+// ==========================================
+// In your Socket.io handlers where deletion occurs:
+socket.on('message:delete', async ({ messageId }) => {
+  try {
+    const msg = await Message.findById(messageId);
+    if (!msg) return;
+
+    // Standard rule: Creator or Owner 'RemixMc' can delete
+    const isOwner = socket.username === 'RemixMc';
+    const isSender = String(msg.senderId) === String(socket.userId);
+
+    if (isSender || isOwner) {
+      await Message.findByIdAndDelete(messageId);
+      io.emit('message:deleted', { messageId }); // Notify clients
+    } else {
+      socket.emit('error', { message: 'Unauthorized deletion attempt' });
+    }
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+// Check blocks when sending messages (socket.on('message:send') or direct messages)
+// Ensure that if a user has blocked another, direct delivery fails or returns an error.

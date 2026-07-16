@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1176167350648115"
+     crossorigin="anonymous"></script>
     <meta name="description"
 content="Remix Nexus is a gaming community where gamers connect, chat, discover games and build friendships.">
 
@@ -37,6 +39,7 @@ content="Join Remix Nexus - Gaming Community">
 
 <meta name="twitter:image"
 content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b9de.png">
+    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="manifest" href="/manifest.json">
@@ -45,7 +48,6 @@ content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b
 
     <link rel="stylesheet" href="./Trending.css">
     <link rel="stylesheet" href="./Chat.css">
-    <link rel="stylesheet" href="./Contacts.css">
     <link rel="stylesheet" href="./Calls.css">
 
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AE%3C/text%3E%3C/svg%3E">
@@ -53,6 +55,31 @@ content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Action buttons for blocking */
+        .block-action-btn {
+            background: #e60000;
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            font-size: 0.9rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            margin-left: 10px;
+        }
+        .block-action-btn:hover {
+            background: #ff3333;
+        }
+        .block-action-btn.blocked {
+            background: #444;
+        }
+        .block-action-btn.blocked:hover {
+            background: #555;
+        }
+    </style>
 </head>
 
 <body>
@@ -72,72 +99,57 @@ content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b
         <a href="./Contacts.html" class="href" aria-current="page"><button class="button3" title="Contacts">👥</button></a>
         <a href="./Search.html" class="href"><button class="button3" title="Search">🔎</button></a>
         <a href="./Profile.html" class="href"><button class="button4" title="Profile">👤</button></a>
+        <a href="./Settings.html" class="href"><button class="button3" title="Settings" style="background: rgba(255, 255, 255, 0.1);">⚙️</button></a>
     </div>
 </header>
 
-<!-- Shown if you're not logged in -->
-<div id="contacts-loggedout" class="profile-card" style="display:none; width:92%; max-width:600px; margin:40px auto; text-align:center;">
-  <div class="loggedout-icon">🔒</div>
-  <h2>You're not logged in</h2>
-  <p>Log in to see your contacts and send private messages.</p>
-  <div class="loggedout-actions">
-    <a class="ghost-btn" href="./index.html">Log In</a>
-    <a class="ghost-btn" href="./Signup.html" style="background:#0066ff;">Sign Up</a>
-  </div>
-</div>
-
-<section id="contacts-shell" class="chat-shell" style="display:none;">
+<section class="chat-shell">
 
   <aside class="chat-rooms">
-    <h2 class="chat-rooms-title">Contacts</h2>
-    <div id="contactList" class="room-list">
-      <p class="empty-state">Loading contacts…</p>
+    <div class="chat-rooms-title-row">
+      <h2 class="chat-rooms-title">Contacts</h2>
     </div>
+    <div id="contactList" class="room-list"></div>
   </aside>
 
   <main class="chat-main">
     <div class="chat-header">
-      <button type="button" id="dmBackBtn" class="back-btn" title="Back to contacts" aria-label="Back to contacts">←</button>
-      <div class="chat-header-profile">
-        <span id="activeContactAvatar" class="chat-header-avatar" style="display:none;"></span>
-        <div>
-          <h2 id="activeContactName">Select a contact</h2>
-          <span id="activeContactJoined" class="chat-header-subtext"></span>
-        </div>
+      <button type="button" id="backToContactsBtn" class="back-btn" title="Back to contacts" aria-label="Back to contacts">←</button>
+      <h2 id="activeContactName">Select a Contact</h2>
+      
+      <div class="call-buttons" id="contactActionButtons" style="display: none;">
+        <button type="button" id="contactVoiceCallBtn" class="call-btn" title="Voice Call">📞</button>
+        <button type="button" id="contactVideoCallBtn" class="call-btn" title="Video Call">🎥</button>
+        <button type="button" id="blockUserBtn" class="block-action-btn" title="Block User">🚫 Block</button>
       </div>
-      <div class="call-buttons" id="dmCallButtons" style="display:none;">
-        <button type="button" id="dmVoiceCallBtn" class="call-btn" title="Voice call">📞</button>
-        <button type="button" id="dmVideoCallBtn" class="call-btn" title="Video call">🎥</button>
-      </div>
-      <span id="dmConnectionBadge" class="pill-badge">Connecting…</span>
+      
+      <span id="connectionBadge" class="pill-badge">Connecting…</span>
     </div>
 
-    <div id="dmMessages" class="messages" aria-live="polite">
-      <p class="empty-state">Pick someone from the list to start chatting privately.</p>
-    </div>
+    <div id="messages" class="messages" aria-live="polite"></div>
 
-    <div id="dmReplyPreview" class="reply-preview" style="display:none;">
+    <div id="replyPreview" class="reply-preview" style="display:none;">
       <div class="reply-preview-content">
-        <span class="reply-preview-label">Replying to <b id="dmReplyPreviewAuthor"></b></span>
-        <p id="dmReplyPreviewText"></p>
+        <span class="reply-preview-label">Replying to <b id="replyPreviewAuthor"></b></span>
+        <p id="replyPreviewText"></p>
       </div>
-      <button id="dmCancelReplyBtn" type="button" title="Cancel reply">✕</button>
+      <button id="cancelReplyBtn" type="button" title="Cancel reply">✕</button>
     </div>
 
-    <form id="dmMessageForm" class="message-form" autocomplete="off">
-      <button type="button" id="dmAttachBtn" class="attach-btn" title="Send a photo or video" disabled>➕</button>
-      <input id="dmMediaInput" type="file" accept="image/*,video/*" hidden>
-      <input id="dmMessageInput" type="text" placeholder="Message this person privately…" maxlength="1000" required disabled>
-      <button type="button" id="dmVoiceBtn" class="voice-btn" title="Record a voice note" disabled>🎤</button>
-      <button type="submit" disabled>Send</button>
+    <form id="messageForm" class="message-form" autocomplete="off" style="display: none;">
+      <button type="button" id="attachBtn" class="attach-btn" title="Send a photo or video">➕</button>
+      <input id="mediaInput" type="file" accept="image/*,video/*" hidden>
+      <input id="messageInput" type="text" placeholder="Send a message…" maxlength="500">
+      <button type="button" id="voiceBtn" class="voice-btn" title="Record a voice note">🎤</button>
+      <button type="submit">Send</button>
     </form>
 
-    <div id="dmRecordingBar" class="recording-bar">
+    <div id="recordingBar" class="recording-bar">
       <span class="recording-dot"></span>
-      <span id="dmRecordingTimer" class="recording-timer">0:00</span>
+      <span id="recordingTimer" class="recording-timer">0:00</span>
       <span class="recording-hint">Recording voice note…</span>
-      <button type="button" id="dmCancelRecordingBtn" class="recording-cancel-btn" title="Cancel">✕</button>
-      <button type="button" id="dmStopRecordingBtn" class="recording-stop-btn" title="Stop &amp; send">⏹</button>
+      <button type="button" id="cancelRecordingBtn" class="recording-cancel-btn" title="Cancel">✕</button>
+      <button type="button" id="stopRecordingBtn" class="recording-stop-btn" title="Stop &amp; send">⏹</button>
     </div>
   </main>
 
@@ -155,7 +167,7 @@ content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b
         <a href="./GamingHome.html">Home</a>
         <a href="./Trending.html">Live</a>
         <a href="./Chat.html">Chat</a>
-         <a href="./Contacts.html">Contacts</a>
+        <a href="./Contacts.html">Contacts</a>
         <a href="./Search.html">Search</a>
         <a href="./Profile.html">Profile</a>
         <a href="./About.html">About</a>
@@ -163,6 +175,7 @@ content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b
         <a href="./Terms.html">Terms of Service</a>
         <a href="https://www.youtube.com/@remixmc-d6v" target="_blank" rel="noopener">▶ YouTube</a>
         <a href="./Privacy.html">🔒 Privacy Policy</a>
+        <a href="./Settings.html">⚙️ Settings</a>
     </div>
     <small>© 2026 𝕽𝖊𝖒𝖎𝖝 𝕹𝖊𝖝𝖚𝖘 Gaming Society. All Rights Reserved.</small>
 </footer>
@@ -174,6 +187,6 @@ content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b
 <script src="./chat-notifications.js"></script>
 <script src="./calls.js"></script>
 <script src="./Contacts.js"></script>
-    <script src="/js/pwa-register.js"></script>
+<script src="/js/pwa-register.js"></script>
 </body>
 </html>

@@ -56,8 +56,21 @@ content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <!-- Socket.io client is now loaded dynamically from BACKEND_URL below -->
-
+    <style>
+        /* Smooth spring animation for message swiping */
+        .message-row {
+            transition: transform 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            will-change: transform;
+            user-select: none; /* Prevents text highlights during swipe */
+        }
+        
+        /* Highlight the Reply Preview element */
+        .reply-preview {
+            border-left: 4px solid #ff5b5b;
+            background: rgba(255, 91, 91, 0.1);
+            transition: all 0.2s ease-in-out;
+        }
+    </style>
 </head>
 
 <body>
@@ -77,6 +90,7 @@ content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b
         <a href="./Contacts.html" class="href"><button class="button3" title="Contacts">👥</button></a>
         <a href="./Search.html" class="href"><button class="button3" title="Search">🔎</button></a>
         <a href="./Profile.html" class="href"><button class="button4" title="Profile">👤</button></a>
+        <a href="./Settings.html" class="href"><button class="button3" title="Settings" style="background: rgba(255, 255, 255, 0.1);">⚙️</button></a>
     </div>
 </header>
 
@@ -150,6 +164,7 @@ content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b
         <a href="./Terms.html">Terms of Service</a>
         <a href="https://www.youtube.com/@remixmc-d6v" target="_blank" rel="noopener">▶ YouTube</a>
         <a href="./Privacy.html">🔒 Privacy Policy</a>
+        <a href="./Settings.html">⚙️ Settings</a>
     </div>
     <small>© 2026 𝕽𝖊𝖒𝖎𝖝 𝕹𝖊𝖝𝖚𝖘 Gaming Society. All Rights Reserved.</small>
 </footer>
