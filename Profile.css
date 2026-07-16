@@ -217,7 +217,33 @@
 .logout-btn:hover{
     background:rgba(255,60,60,.3);
 }
+.settings-btn{
 
+display:inline-block;
+
+margin-top:20px;
+
+padding:12px 18px;
+
+background:#0066ff;
+
+color:white;
+
+text-decoration:none;
+
+border-radius:12px;
+
+font-weight:bold;
+
+transition:.3s;
+
+}
+
+.settings-btn:hover{
+
+background:#0050d1;
+
+}
 @media(max-width:480px){
     .profile-shell{ width:95%; margin:24px auto 60px; }
     .profile-card{ padding:22px 18px; border-radius:20px; }

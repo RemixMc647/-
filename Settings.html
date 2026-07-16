@@ -1,150 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1176167350648115"
-     crossorigin="anonymous"></script>
-    <meta name="description"
-content="Remix Nexus is a gaming community where gamers connect, chat, discover games and build friendships.">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings | Remix Nexus</title>
 
-<meta name="keywords"
-content="Remix Nexus,gaming,gamers,community,online games,social network">
-
-<meta name="author"
-content="Remix Nexus">
-
-<meta name="robots"
-content="index, follow">
-    <meta property="og:title"
-content="Remix Nexus">
-
-<meta property="og:description"
-content="Join Remix Nexus - The Ultimate Gaming Community">
-
-<meta property="og:image"
-content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b9de.png">
-
-<meta property="og:url"
-content="https://remix-nexus-tygt.onrender.com">
-
-<meta property="og:type"
-content="website">
-    <meta name="twitter:card"
-content="summary_large_image">
-
-<meta name="twitter:title"
-content="Remix Nexus">
-
-<meta name="twitter:description"
-content="Join Remix Nexus - Gaming Community">
-
-<meta name="twitter:image"
-content="https://remix-nexus-tygt.onrender.com/64bca3b4-63c3-4f2d-a8c3-3c75abc4b9de.png">
-    
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#000000">
-    <title>Settings - Remix Nexus</title>
-    <link rel="stylesheet" href="./Chat.css">
-    <style>
-        .settings-container {
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 20px;
-            background: #1e1e24;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            color: #fff;
-        }
-        .settings-header {
-            border-bottom: 1px solid #2d2d35;
-            padding-bottom: 15px;
-            margin-bottom: 20px;
-        }
-        .settings-group {
-            margin-bottom: 25px;
-        }
-        .settings-group h3 {
-            color: #ff5b5b;
-            margin-bottom: 10px;
-        }
-        .settings-btn {
-            background: #e60000;
-            color: #fff;
-            border: none;
-            padding: 12px 20px;
-            font-size: 1rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.2s;
-            width: 100%;
-        }
-        .settings-btn:hover {
-            background: #ff3333;
-        }
-        .settings-links a {
-            display: block;
-            padding: 12px;
-            background: #2a2a32;
-            margin-bottom: 8px;
-            border-radius: 8px;
-            color: #fff;
-            text-decoration: none;
-            transition: background 0.2s;
-        }
-        .settings-links a:hover {
-            background: #3a3a45;
-        }
-    </style>
+<link rel="stylesheet" href="Trending.css">
+<link rel="stylesheet" href="Settings.css">
 </head>
+
 <body>
 
-<section class="settings-container">
-    <div class="settings-header">
-        <h2>⚙️ App Settings</h2>
-        <p>Manage your account settings, data, and find information about Remix Nexus.</p>
-    </div>
+<header class="settings-header">
+    <button onclick="history.back()">←</button>
+    <h2>Settings</h2>
+</header>
 
-    <div class="settings-group">
-        <h3>App Storage Management</h3>
-        <p style="font-size: 0.9rem; color: #bdbdbd; margin-bottom: 10px;">
-            If you are running our Android app, chats are saved locally on your device indefinitely. Click below to clear all locally cached chat logs and settings.
-        </p>
-        <button id="clearAppCacheBtn" class="settings-btn">🧹 Clear All Local App Chats</button>
-        <p id="cacheStatus" style="margin-top: 8px; color: #00e676; display: none;"></p>
-    </div>
+<div class="settings-container">
 
-    <div class="settings-group">
-        <h3>Information & Policies</h3>
-        <div class="settings-links">
-            <a href="./About.html">ℹ️ About Us</a>
-            <a href="./Terms.html">📜 Terms of Service</a>
-            <a href="./Privacy.html">🔒 Privacy Policy</a>
-            <a href="./Contact.html">📧 Support Contact</a>
-            <a href="./Profile.html">👤 Back to Profile</a>
-            <a href="./Chat.html">💬 Back to Chats</a>
+    <div class="setting-card" onclick="location.href='Profile.html'">
+        👤
+        <div>
+            <h3>Account</h3>
+            <p>Edit profile and account</p>
         </div>
     </div>
-</section>
 
-<script src="./config.js"></script>
-<script>
-    document.getElementById('clearAppCacheBtn').addEventListener('click', () => {
-        if (confirm("Are you sure you want to delete all cached chats and local app data? This action cannot be undone.")) {
-            // Clear local storage message cache
-            for (let i = localStorage.length - 1; i >= 0; i--) {
-                const key = localStorage.key(i);
-                if (key.startsWith('remix-messages-') || key.startsWith('remix-contacts-')) {
-                    localStorage.removeItem(key);
-                }
-            }
-            const status = document.getElementById('cacheStatus');
-            status.textContent = "Local app storage successfully cleared!";
-            status.style.display = "block";
-            setTimeout(() => { status.style.display = "none"; }, 4000);
-        }
-    });
-</script>
+    <div class="setting-card" id="notifications">
+        🔔
+        <div>
+            <h3>Notifications</h3>
+            <p>Messages and Calls</p>
+        </div>
+    </div>
+
+    <div class="setting-card" id="privacy">
+        🔒
+        <div>
+            <h3>Privacy</h3>
+            <p>Control who can contact you</p>
+        </div>
+    </div>
+
+    <div class="setting-card" onclick="location.href='BlockedUsers.html'">
+        🚫
+        <div>
+            <h3>Blocked Users</h3>
+            <p>Manage blocked people</p>
+        </div>
+    </div>
+
+    <div class="setting-card" id="clearChats">
+        🗑️
+        <div>
+            <h3>Clear All Chats</h3>
+            <p>Remove every conversation</p>
+        </div>
+    </div>
+
+    <div class="setting-card">
+        ℹ️
+        <div>
+            <h3>About Remix Nexus</h3>
+            <p>Version & Information</p>
+        </div>
+    </div>
+
+    <div class="setting-card">
+        ❓
+        <div>
+            <h3>Help & Support</h3>
+            <p>Need assistance?</p>
+        </div>
+    </div>
+
+    <div class="setting-card">
+        📜
+        <div>
+            <h3>Terms & Privacy Policy</h3>
+        </div>
+    </div>
+
+    <button class="logout-btn" id="logoutBtn">
+        Logout
+    </button>
+
+</div>
+
+<script src="auth.js"></script>
+<script src="Settings.js"></script>
+
 </body>
 </html>
