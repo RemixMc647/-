@@ -595,6 +595,7 @@ own coturn) to ICE_SERVERS below.
     // finished getting camera/mic access and setting up our side.
     if (pendingOfferData) {
       await pc.setRemoteDescription(new RTCSessionDescription(pendingOfferData));
+      flushQueuedCandidates(call);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socket.emit('call:signal', { toUserId: fromUserId, callId, data: { kind: 'answer', sdp: answer } });
@@ -627,19 +628,38 @@ own coturn) to ICE_SERVERS below.
     try {
       if (data.kind === 'offer') {
         await call.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        flushQueuedCandidates(call);
         const answer = await call.pc.createAnswer();
         await call.pc.setLocalDescription(answer);
         socket.emit('call:signal', { toUserId: fromUserId, callId, data: { kind: 'answer', sdp: answer } });
       } else if (data.kind === 'answer') {
         await call.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        flushQueuedCandidates(call);
         stopRingback();
         startTimer();
       } else if (data.kind === 'candidate') {
-        await call.pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+        // If the remote description isn't applied yet, addIceCandidate()
+        // throws and the old code just swallowed that error — losing the
+        // candidate for good. Queuing it here instead means it gets added
+        // the moment the offer/answer above finishes, so a candidate that
+        // arrives early no longer just vanishes.
+        if (call.pc.remoteDescription) {
+          await call.pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+        } else {
+          call.queuedCandidates = call.queuedCandidates || [];
+          call.queuedCandidates.push(data.candidate);
+        }
       }
     } catch (err) {
       console.error('Call signal error:', err);
     }
+  }
+
+  function flushQueuedCandidates(callObj) {
+    if (!callObj.queuedCandidates || !callObj.queuedCandidates.length) return;
+    const queued = callObj.queuedCandidates;
+    callObj.queuedCandidates = [];
+    queued.forEach((c) => callObj.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {}));
   }
 
   function endCall(notifyPeer) {
@@ -776,13 +796,20 @@ own coturn) to ICE_SERVERS below.
     try {
       if (data.kind === 'offer') {
         await peer.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        flushQueuedCandidates(peer);
         const answer = await peer.pc.createAnswer();
         await peer.pc.setLocalDescription(answer);
         socket.emit('roomcall:signal', { room, callId, toUserId: fromUserId, data: { kind: 'answer', sdp: answer } });
       } else if (data.kind === 'answer') {
         await peer.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        flushQueuedCandidates(peer);
       } else if (data.kind === 'candidate') {
-        await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+        if (peer.pc.remoteDescription) {
+          await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+        } else {
+          peer.queuedCandidates = peer.queuedCandidates || [];
+          peer.queuedCandidates.push(data.candidate);
+        }
       }
     } catch (err) {
       console.error('Room call signal error:', err);
