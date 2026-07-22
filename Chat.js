@@ -8,11 +8,23 @@ console.log('DEBUG AUTH.getToken() at socket-creation time:', window.AUTH ? AUTH
 
 const API_BASE = "https://remix-nexus-production.up.railway.app";
 
-const socket = io("https://remix-nexus-production.up.railway.app", {
-  auth: { token: window.AUTH ? AUTH.getToken() : null }
-});
-
-console.log('DEBUG socket.auth immediately after creation:', socket.auth);
+// Guarded: if config.js failed to load, BACKEND_URL was wrong, or the
+// backend is down, socket.io.js never loads and `io` is undefined — calling
+// io(...) would then throw and halt every line below it in this file,
+// including renderRooms() at the bottom. That was silently killing the
+// room list any time the backend/socket had a problem. Now a failure here
+// just logs and falls back to a no-op stub so the rest of Chat.js
+// (rooms, message rendering, etc.) still runs normally.
+let socket;
+try {
+  socket = io("https://remix-nexus-production.up.railway.app", {
+    auth: { token: window.AUTH ? AUTH.getToken() : null }
+  });
+  console.log('DEBUG socket.auth immediately after creation:', socket.auth);
+} catch (err) {
+  console.error('Chat.js: socket.io failed to initialize — check that config.js loaded and BACKEND_URL points to a live backend.', err);
+  socket = { on(){}, once(){}, off(){}, emit(){}, connected: false };
+}
 
 // Marks this as a full-screen, app-style page on phones/tablets — see the
 // mobile rules in Chat.css. Desktop is unaffected.
