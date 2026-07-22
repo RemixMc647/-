@@ -1062,43 +1062,80 @@ app.get('/api/stats/leaderboard', dbGuard, async (req, res) => {
 });
 
 // ---- GAMING NEWS — live headlines from around the gaming world ----
-// Pulled from IGN's public RSS feed via rss2json.com's free RSS->JSON
-// bridge (no scraping, no API key required for light traffic). Cached in
-// memory for 30 minutes so a burst of visitors only triggers one real
-// upstream fetch — if that upstream call ever fails, the last good cache
-// is served instead of an error, so the section never looks broken.
-// NOTE: rss2json's free tier rate-limits repeated calls without a key —
-// if you start seeing empty results, sign up free at https://rss2json.com
-// and set RSS2JSON_API_KEY as a Render env var.
-const GAMING_NEWS_FEED_URL = 'https://feeds.ign.com/ign/all';
+// Fetches real gaming-news RSS feeds directly and parses them ourselves
+// (no third-party "RSS to JSON" bridge — those free bridges rate-limit
+// heavily-requested feeds like IGN's without an API key, which is why
+// this used to come back empty). Tries each feed in order until one
+// returns usable items. Cached in memory for 30 minutes so a burst of
+// visitors only triggers one real upstream fetch; if every feed fails,
+// the last good cache is served instead of an empty section.
+const GAMING_NEWS_FEEDS = [
+  'https://feeds.ign.com/ign/all',
+  'https://www.polygon.com/rss/index.xml',
+  'https://kotaku.com/rss'
+];
 const GAMING_NEWS_CACHE_MS = 30 * 60 * 1000; // 30 minutes
 let gamingNewsCache = { items: [], fetchedAt: 0 };
+
+function extractTag(xml, tag) {
+  const match = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+  if (!match) return '';
+  return match[1].replace(/^\s*<!\[CDATA\[/, '').replace(/\]\]>\s*$/, '').trim();
+}
+
+function extractImage(itemXml) {
+  const media = itemXml.match(/<media:(?:thumbnail|content)[^>]*url=["']([^"']+)["']/i);
+  if (media) return media[1];
+  const enclosure = itemXml.match(/<enclosure[^>]*url=["']([^"']+)["'][^>]*type=["']image[^"']*["']/i);
+  if (enclosure) return enclosure[1];
+  const imgInBody = itemXml.match(/<img[^>]*src=["']([^"']+)["']/i);
+  if (imgInBody) return imgInBody[1];
+  return '';
+}
+
+async function fetchGamingNewsFromFeed(feedUrl) {
+  const response = await fetch(feedUrl, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RemixNexusBot/1.0; +https://remix-nexus-bgz9.onrender.com)' }
+  });
+  if (!response.ok) throw new Error(`Feed responded with HTTP ${response.status}`);
+  const xml = await response.text();
+
+  const feedTitleMatch = xml.match(/<channel>[\s\S]*?<title>([\s\S]*?)<\/title>/i);
+  const sourceName = feedTitleMatch
+    ? feedTitleMatch[1].replace(/^\s*<!\[CDATA\[/, '').replace(/\]\]>\s*$/, '').trim()
+    : 'Gaming News';
+
+  const itemBlocks = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
+
+  return itemBlocks.slice(0, 6)
+    .map((block) => ({
+      title: extractTag(block, 'title'),
+      link: extractTag(block, 'link'),
+      pubDate: extractTag(block, 'pubDate'),
+      image: extractImage(block),
+      source: sourceName
+    }))
+    .filter((item) => item.title && item.link);
+}
 
 app.get('/api/news/gaming', async (req, res) => {
   const isStale = Date.now() - gamingNewsCache.fetchedAt > GAMING_NEWS_CACHE_MS;
 
   if (isStale) {
-    try {
-      const keyParam = process.env.RSS2JSON_API_KEY ? `&api_key=${process.env.RSS2JSON_API_KEY}` : '';
-      const feedUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(GAMING_NEWS_FEED_URL)}&count=6${keyParam}`;
-      const upstream = await fetch(feedUrl);
-      const data = await upstream.json();
-
-      if (data && data.status === 'ok' && Array.isArray(data.items) && data.items.length) {
-        gamingNewsCache = {
-          items: data.items.slice(0, 6).map((item) => ({
-            title: item.title,
-            link: item.link,
-            image: item.thumbnail || (item.enclosure && item.enclosure.link) || '',
-            source: (data.feed && data.feed.title) || 'Gaming News',
-            pubDate: item.pubDate
-          })),
-          fetchedAt: Date.now()
-        };
+    let items = [];
+    for (const feedUrl of GAMING_NEWS_FEEDS) {
+      try {
+        items = await fetchGamingNewsFromFeed(feedUrl);
+        if (items.length) break; // got usable headlines, no need to try the rest
+      } catch (err) {
+        console.error(`Gaming news: feed failed (${feedUrl}):`, err.message);
       }
-    } catch (err) {
-      console.error('Gaming news fetch error:', err);
-      // fall through and serve whatever's cached (even if stale/empty)
+    }
+
+    if (items.length) {
+      gamingNewsCache = { items, fetchedAt: Date.now() };
+    } else {
+      console.error('Gaming news: every feed source failed this refresh — serving last known cache.');
     }
   }
 
