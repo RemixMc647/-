@@ -6,9 +6,9 @@ Talks to the Express + Socket.io server hosted on Railway.
 console.log('DEBUG window.AUTH exists?', !!window.AUTH);
 console.log('DEBUG AUTH.getToken() at socket-creation time:', window.AUTH ? AUTH.getToken() : 'no AUTH object');
 
-const API_BASE = "https://remix-nexus-production.up.railway.app";
+const API_BASE = "https://remix-nexus-bgz9.onrender.com";
 
-const socket = io("https://remix-nexus-production.up.railway.app", {
+const socket = io("https://remix-nexus-bgz9.onrender.com", {
   auth: { token: window.AUTH ? AUTH.getToken() : null }
 });
 
