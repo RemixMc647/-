@@ -8,23 +8,11 @@ console.log('DEBUG AUTH.getToken() at socket-creation time:', window.AUTH ? AUTH
 
 const API_BASE = "https://remix-nexus-production.up.railway.app";
 
-// Guarded: if config.js failed to load, BACKEND_URL was wrong, or the
-// backend is down, socket.io.js never loads and `io` is undefined — calling
-// io(...) would then throw and halt every line below it in this file,
-// including renderRooms() at the bottom. That was silently killing the
-// room list any time the backend/socket had a problem. Now a failure here
-// just logs and falls back to a no-op stub so the rest of Chat.js
-// (rooms, message rendering, etc.) still runs normally.
-let socket;
-try {
-  socket = io("https://remix-nexus-production.up.railway.app", {
-    auth: { token: window.AUTH ? AUTH.getToken() : null }
-  });
-  console.log('DEBUG socket.auth immediately after creation:', socket.auth);
-} catch (err) {
-  console.error('Chat.js: socket.io failed to initialize — check that config.js loaded and BACKEND_URL points to a live backend.', err);
-  socket = { on(){}, once(){}, off(){}, emit(){}, connected: false };
-}
+const socket = io("https://remix-nexus-production.up.railway.app", {
+  auth: { token: window.AUTH ? AUTH.getToken() : null }
+});
+
+console.log('DEBUG socket.auth immediately after creation:', socket.auth);
 
 // Marks this as a full-screen, app-style page on phones/tablets — see the
 // mobile rules in Chat.css. Desktop is unaffected.
@@ -178,22 +166,7 @@ function setMobileView(view){
   if (!chatShellEl) return;
   chatShellEl.classList.remove('view-list', 'view-conversation');
   chatShellEl.classList.add(view === 'conversation' ? 'view-conversation' : 'view-list');
-  updateNavBarVisibility();
 }
-
-// Hide the top nav bar while a room's conversation is open, on mobile —
-// same idea as the footer already being hidden on mobile, just gives the
-// open chat the full screen. Desktop is unaffected since both panels show
-// side by side there and the nav bar always stays visible.
-function updateNavBarVisibility(){
-  const header = document.querySelector('.nav-bar');
-  if (!header || !chatShellEl) return;
-  const isMobile = window.innerWidth <= 820;
-  const inConversation = chatShellEl.classList.contains('view-conversation');
-  header.style.display = (isMobile && inConversation) ? 'none' : '';
-  if (typeof adjustChatShellHeight === 'function') adjustChatShellHeight();
-}
-window.addEventListener('resize', updateNavBarVisibility);
 
 function openRoomConversation(roomId){
   switchRoom(roomId);

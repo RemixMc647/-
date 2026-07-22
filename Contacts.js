@@ -296,20 +296,7 @@ function setMobileView(view){
   if (!shellEl) return;
   shellEl.classList.remove('view-list', 'view-conversation');
   shellEl.classList.add(view === 'conversation' ? 'view-conversation' : 'view-list');
-  updateNavBarVisibility();
 }
-
-// Hide the top nav bar while a contact's conversation is open, on mobile —
-// mirrors the same change in Chat.js so both pages behave the same way.
-function updateNavBarVisibility(){
-  const header = document.querySelector('.nav-bar');
-  if (!header || !shellEl) return;
-  const isMobile = window.innerWidth <= 820;
-  const inConversation = shellEl.classList.contains('view-conversation');
-  header.style.display = (isMobile && inConversation) ? 'none' : '';
-  if (typeof adjustChatShellHeight === 'function') adjustChatShellHeight();
-}
-window.addEventListener('resize', updateNavBarVisibility);
 
 if (dmBackBtn){
   dmBackBtn.addEventListener('click', () => setMobileView('list'));
