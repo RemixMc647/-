@@ -14,6 +14,3 @@ const BACKEND_URL = 'https://remix-nexus-production.up.railway.app';
 // Frontend origin used by backend CORS (some deployments also embed this into static pages)
 // If your backend reads FRONTEND_ORIGIN from environment variables, you may not need this value.
 const FRONTEND_URL = 'https://remix-nexus-tygt.onrender.com';
-
-// Expose as window.CONFIG so other scripts (e.g. ai-assistant.js) can read it
-window.CONFIG = { BACKEND_URL, FRONTEND_URL };
