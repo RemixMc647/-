@@ -4,7 +4,7 @@ Lists people you've shared a chat room with, and lets you
 message any of them privately, one-to-one, like a DM.
 ==============================*/
 
-const API_BASE = 'https://remix-nexus-production.up.railway.app';
+const API_BASE = 'https://remix-nexus-bgz9.onrender.com';
 
 // Marks this as a full-screen, app-style page on phones/tablets — see the
 // mobile rules in Chat.css (shared with Contacts.css). Desktop is unaffected.
