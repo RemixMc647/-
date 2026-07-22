@@ -1,4 +1,4 @@
-const API_BASE = "https://remix-nexus-production.up.railway.app";
+const API_BASE = "https://remix-nexus-bgz9.onrender.com";
 
 // ===============================
 // "MOST ACTIVE RIGHT NOW" — shown just above the newsletter Subscribe
