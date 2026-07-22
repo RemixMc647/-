@@ -6,13 +6,56 @@ Talks to the Express + Socket.io server hosted on Railway.
 console.log('DEBUG window.AUTH exists?', !!window.AUTH);
 console.log('DEBUG AUTH.getToken() at socket-creation time:', window.AUTH ? AUTH.getToken() : 'no AUTH object');
 
-const API_BASE = "https://remix-nexus-production.up.railway.app";
+const API_BASE = "https://remix-nexus-bgz9.onrender.com";
 
-const socket = io("https://remix-nexus-production.up.railway.app", {
+const socket = io("https://remix-nexus-bgz9.onrender.com", {
   auth: { token: window.AUTH ? AUTH.getToken() : null }
 });
 
 console.log('DEBUG socket.auth immediately after creation:', socket.auth);
+
+/* -----------------------------------------------------------
+   SERVER STATUS BANNER — Render's free tier spins the backend down
+   after ~15 min idle, so the first connection attempt after that can
+   take up to a minute (cold start). Rather than let chat silently fail
+   to connect, show a friendly banner for as long as that takes, and
+   hide it the moment we're actually connected.
+----------------------------------------------------------- */
+const serverStatusBanner = document.getElementById('serverStatusBanner');
+const serverStatusBannerText = document.getElementById('serverStatusBannerText');
+let bannerShowTimer = null;
+let bannerSlowTimer = null;
+
+function showServerBanner(){
+  if (!serverStatusBanner) return;
+  if (serverStatusBannerText) serverStatusBannerText.textContent = 'Waking up the server, this can take up to a minute…';
+  serverStatusBanner.classList.add('visible');
+  clearTimeout(bannerSlowTimer);
+  bannerSlowTimer = setTimeout(() => {
+    if (serverStatusBanner.classList.contains('visible') && serverStatusBannerText) {
+      serverStatusBannerText.textContent = 'Still waking up the server — thanks for your patience…';
+    }
+  }, 15000);
+}
+
+function hideServerBanner(){
+  if (!serverStatusBanner) return;
+  clearTimeout(bannerShowTimer);
+  clearTimeout(bannerSlowTimer);
+  serverStatusBanner.classList.remove('visible');
+}
+
+// Don't flash the banner for a brief network blip — only show it if the
+// disconnect/reconnect attempt lasts more than ~2 seconds.
+function scheduleServerBanner(){
+  if (bannerShowTimer || (serverStatusBanner && serverStatusBanner.classList.contains('visible'))) return;
+  bannerShowTimer = setTimeout(showServerBanner, 2000);
+}
+
+socket.on('disconnect', scheduleServerBanner);
+socket.on('connect_error', scheduleServerBanner);
+socket.on('reconnect_attempt', scheduleServerBanner);
+socket.on('connect', hideServerBanner);
 
 // Marks this as a full-screen, app-style page on phones/tablets — see the
 // mobile rules in Chat.css. Desktop is unaffected.
@@ -162,10 +205,52 @@ function formatDuration(seconds){
    time. Desktop always shows both side by side, unaffected — the CSS
    classes below only do anything under Chat.css's 820px breakpoint.
 ----------------------------------------------------------- */
+// Injects the CSS needed for full-screen conversation mode below, once —
+// kept here in JS (instead of Chat.css) so this works immediately without
+// needing a separate CSS deploy.
+(function ensureFullScreenStyles(){
+  if (document.getElementById('chat-fullscreen-style')) return;
+  const style = document.createElement('style');
+  style.id = 'chat-fullscreen-style';
+  style.textContent = `
+    @media (max-width: 820px) {
+      body.conversation-fullscreen .nav-bar,
+      body.conversation-fullscreen .footer {
+        display: none !important;
+      }
+      body.conversation-fullscreen .chat-shell,
+      body.conversation-fullscreen #contacts-shell {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 100% !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        z-index: 1000;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
 function setMobileView(view){
   if (!chatShellEl) return;
   chatShellEl.classList.remove('view-list', 'view-conversation');
   chatShellEl.classList.add(view === 'conversation' ? 'view-conversation' : 'view-list');
+
+  // WhatsApp-style: while a room is open on mobile, hide the top nav bar
+  // + footer entirely and let the conversation fill the whole screen.
+  // Desktop is unaffected — the @media rule above only applies under 820px.
+  document.body.classList.toggle('conversation-fullscreen', view === 'conversation');
+
+  // The nav bar just changed height (or disappeared), so the shell's
+  // pinned height needs to be recalculated against the new layout.
+  if (typeof adjustChatShellHeight === 'function') {
+    requestAnimationFrame(adjustChatShellHeight);
+  }
 }
 
 function openRoomConversation(roomId){

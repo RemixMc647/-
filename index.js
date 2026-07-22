@@ -38,7 +38,7 @@ REMIX-NEXUS — LOGIN LOGIC
     showMessage('', false);
 
     try {
-      const res = await fetch('https://remix-nexus-production.up.railway.app/api/login', {
+      const res = await fetch('https://remix-nexus-bgz9.onrender.com/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -98,7 +98,7 @@ REMIX-NEXUS — LOGIN LOGIC
       forgotMessage.textContent = '';
 
       try {
-        const res = await fetch('https://remix-nexus-production.up.railway.app/api/forgot-password', {
+        const res = await fetch('https://remix-nexus-bgz9.onrender.com/api/forgot-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email })

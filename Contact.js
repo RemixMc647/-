@@ -28,7 +28,7 @@ contactForm.addEventListener('submit', async (e) => {
   contactStatus.style.color = '#bdbdbd';
 
   try {
-    const res = await fetch('https://remix-nexus-production.up.railway.app/api/contact', {
+    const res = await fetch('https://remix-nexus-bgz9.onrender.com/api/contact', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, reason, message })

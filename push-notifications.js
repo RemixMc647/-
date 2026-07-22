@@ -9,7 +9,7 @@ window.Capacitor.Plugins.PushNotifications is available.
 ==============================*/
 
 (function () {
-  const API_BASE = 'https://remix-nexus-production.up.railway.app'; // update this alongside Chat.js/Contacts.js when you switch hosts
+  const API_BASE = 'https://remix-nexus-bgz9.onrender.com'; // update this alongside Chat.js/Contacts.js when you switch hosts
 
   function isNativeApp() {
     return !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications);

@@ -32,7 +32,7 @@ document.getElementById('clearChats').onclick = async () => {
   clearBtn.style.opacity = '0.6';
 
   try {
-    const res = await fetch('https://remix-nexus-production.up.railway.app/api/me/chats', {
+    const res = await fetch('https://remix-nexus-bgz9.onrender.com/api/me/chats', {
       method: 'DELETE',
       headers: {
         Authorization: 'Bearer ' + AUTH.getToken()

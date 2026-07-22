@@ -4,11 +4,60 @@ Lists people you've shared a chat room with, and lets you
 message any of them privately, one-to-one, like a DM.
 ==============================*/
 
-const API_BASE = 'https://remix-nexus-production.up.railway.app';
+const API_BASE = 'https://remix-nexus-bgz9.onrender.com';
 
 // Marks this as a full-screen, app-style page on phones/tablets — see the
 // mobile rules in Chat.css (shared with Contacts.css). Desktop is unaffected.
 document.body.classList.add('app-shell-page');
+
+/* -----------------------------------------------------------
+   SERVER STATUS BANNER — Render's free tier spins the backend down
+   after ~15 min idle, so the first connection attempt after that can
+   take up to a minute (cold start). Rather than let DMs silently fail
+   to connect, show a friendly banner for as long as that takes, and
+   hide it the moment we're actually connected.
+----------------------------------------------------------- */
+const serverStatusBanner = document.getElementById('serverStatusBanner');
+const serverStatusBannerText = document.getElementById('serverStatusBannerText');
+let bannerShowTimer = null;
+let bannerSlowTimer = null;
+
+function showServerBanner(){
+  if (!serverStatusBanner) return;
+  if (serverStatusBannerText) serverStatusBannerText.textContent = 'Waking up the server, this can take up to a minute…';
+  serverStatusBanner.classList.add('visible');
+  clearTimeout(bannerSlowTimer);
+  bannerSlowTimer = setTimeout(() => {
+    if (serverStatusBanner.classList.contains('visible') && serverStatusBannerText) {
+      serverStatusBannerText.textContent = 'Still waking up the server — thanks for your patience…';
+    }
+  }, 15000);
+}
+
+function hideServerBanner(){
+  if (!serverStatusBanner) return;
+  clearTimeout(bannerShowTimer);
+  clearTimeout(bannerSlowTimer);
+  serverStatusBanner.classList.remove('visible');
+}
+
+// Don't flash the banner for a brief network blip — only show it if the
+// disconnect/reconnect attempt lasts more than ~2 seconds.
+function scheduleServerBanner(){
+  if (bannerShowTimer || (serverStatusBanner && serverStatusBanner.classList.contains('visible'))) return;
+  bannerShowTimer = setTimeout(showServerBanner, 2000);
+}
+
+// socket itself is created later, inside init() below (only once we know
+// the person is logged in) — attachServerStatusBanner() wires these same
+// handlers onto it the moment it exists.
+function attachServerStatusBanner(socketInstance){
+  if (!socketInstance) return;
+  socketInstance.on('disconnect', scheduleServerBanner);
+  socketInstance.on('connect_error', scheduleServerBanner);
+  socketInstance.on('reconnect_attempt', scheduleServerBanner);
+  socketInstance.on('connect', hideServerBanner);
+}
 
 const loggedOutEl = document.getElementById('contacts-loggedout');
 const shellEl = document.getElementById('contacts-shell');
@@ -292,10 +341,53 @@ function formatDuration(seconds){
    time. Desktop always shows both side by side, unaffected — the CSS
    classes below only do anything under Chat.css's 820px breakpoint.
 ----------------------------------------------------------- */
+// Injects the CSS needed for full-screen conversation mode below, once —
+// kept here in JS (instead of Chat.css) so this works immediately without
+// needing a separate CSS deploy. Chat.js injects the same block (guarded
+// by the same id), so whichever page loads first wins — no duplicates.
+(function ensureFullScreenStyles(){
+  if (document.getElementById('chat-fullscreen-style')) return;
+  const style = document.createElement('style');
+  style.id = 'chat-fullscreen-style';
+  style.textContent = `
+    @media (max-width: 820px) {
+      body.conversation-fullscreen .nav-bar,
+      body.conversation-fullscreen .footer {
+        display: none !important;
+      }
+      body.conversation-fullscreen .chat-shell,
+      body.conversation-fullscreen #contacts-shell {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 100% !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        z-index: 1000;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
 function setMobileView(view){
   if (!shellEl) return;
   shellEl.classList.remove('view-list', 'view-conversation');
   shellEl.classList.add(view === 'conversation' ? 'view-conversation' : 'view-list');
+
+  // WhatsApp-style: while a DM is open on mobile, hide the top nav bar
+  // + footer entirely and let the conversation fill the whole screen.
+  // Desktop is unaffected — the @media rule above only applies under 820px.
+  document.body.classList.toggle('conversation-fullscreen', view === 'conversation');
+
+  // The nav bar just changed height (or disappeared), so the panel's
+  // pinned height needs to be recalculated against the new layout.
+  if (typeof adjustChatShellHeight === 'function') {
+    requestAnimationFrame(adjustChatShellHeight);
+  }
 }
 
 if (dmBackBtn){
@@ -1215,6 +1307,7 @@ function handleIncomingDM(payload){
   shellEl.style.display = 'grid';
 
   socket = window.io ? io(API_BASE, { auth: { token: AUTH.getToken() } }) : null;
+  attachServerStatusBanner(socket);
 
   if (socket){
     socket.on('connect', updateDmBadge);
