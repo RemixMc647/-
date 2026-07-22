@@ -161,10 +161,6 @@ app.use(cors({
 const PUBLIC_DIR = __dirname;
 app.use(express.static(PUBLIC_DIR));
 
-// ---- AI ASSISTANT (Ask AI / Draft Reply panel) ----
-// Requires env var GEMINI_API_KEY. See routes/aiAssist.js for details.
-app.use(require('./routes/aiAssist'));
-
 // ---- ANDROID APP (APK) DOWNLOAD ----
 // The APK is stored directly in the repo under /downloads and served
 // as a static file. This route gives a stable link (/download/app)
