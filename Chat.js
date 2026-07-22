@@ -166,7 +166,22 @@ function setMobileView(view){
   if (!chatShellEl) return;
   chatShellEl.classList.remove('view-list', 'view-conversation');
   chatShellEl.classList.add(view === 'conversation' ? 'view-conversation' : 'view-list');
+  updateNavBarVisibility();
 }
+
+// Hide the top nav bar while a room's conversation is open, on mobile —
+// same idea as the footer already being hidden on mobile, just gives the
+// open chat the full screen. Desktop is unaffected since both panels show
+// side by side there and the nav bar always stays visible.
+function updateNavBarVisibility(){
+  const header = document.querySelector('.nav-bar');
+  if (!header || !chatShellEl) return;
+  const isMobile = window.innerWidth <= 820;
+  const inConversation = chatShellEl.classList.contains('view-conversation');
+  header.style.display = (isMobile && inConversation) ? 'none' : '';
+  if (typeof adjustChatShellHeight === 'function') adjustChatShellHeight();
+}
+window.addEventListener('resize', updateNavBarVisibility);
 
 function openRoomConversation(roomId){
   switchRoom(roomId);
