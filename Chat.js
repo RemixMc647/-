@@ -14,6 +14,49 @@ const socket = io("https://remix-nexus-bgz9.onrender.com", {
 
 console.log('DEBUG socket.auth immediately after creation:', socket.auth);
 
+/* -----------------------------------------------------------
+   SERVER STATUS BANNER — Render's free tier spins the backend down
+   after ~15 min idle, so the first connection attempt after that can
+   take up to a minute (cold start). Rather than let chat silently fail
+   to connect, show a friendly banner for as long as that takes, and
+   hide it the moment we're actually connected.
+----------------------------------------------------------- */
+const serverStatusBanner = document.getElementById('serverStatusBanner');
+const serverStatusBannerText = document.getElementById('serverStatusBannerText');
+let bannerShowTimer = null;
+let bannerSlowTimer = null;
+
+function showServerBanner(){
+  if (!serverStatusBanner) return;
+  if (serverStatusBannerText) serverStatusBannerText.textContent = 'Waking up the server, this can take up to a minute…';
+  serverStatusBanner.classList.add('visible');
+  clearTimeout(bannerSlowTimer);
+  bannerSlowTimer = setTimeout(() => {
+    if (serverStatusBanner.classList.contains('visible') && serverStatusBannerText) {
+      serverStatusBannerText.textContent = 'Still waking up the server — thanks for your patience…';
+    }
+  }, 15000);
+}
+
+function hideServerBanner(){
+  if (!serverStatusBanner) return;
+  clearTimeout(bannerShowTimer);
+  clearTimeout(bannerSlowTimer);
+  serverStatusBanner.classList.remove('visible');
+}
+
+// Don't flash the banner for a brief network blip — only show it if the
+// disconnect/reconnect attempt lasts more than ~2 seconds.
+function scheduleServerBanner(){
+  if (bannerShowTimer || (serverStatusBanner && serverStatusBanner.classList.contains('visible'))) return;
+  bannerShowTimer = setTimeout(showServerBanner, 2000);
+}
+
+socket.on('disconnect', scheduleServerBanner);
+socket.on('connect_error', scheduleServerBanner);
+socket.on('reconnect_attempt', scheduleServerBanner);
+socket.on('connect', hideServerBanner);
+
 // Marks this as a full-screen, app-style page on phones/tablets — see the
 // mobile rules in Chat.css. Desktop is unaffected.
 document.body.classList.add('app-shell-page');
