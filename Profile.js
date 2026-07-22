@@ -50,7 +50,7 @@ function renderUser(user){
 
 async function loadAvatarPicker(currentAvatar){
   try {
-    const res = await fetch('https://remix-nexus-production.up.railway.app/api/avatar-options');
+    const res = await fetch('https://remix-nexus-bgz9.onrender.com/api/avatar-options');
     const data = await res.json();
     const options = data.options || [];
 
@@ -71,7 +71,7 @@ async function selectAvatar(emoji){
   avatarMessage.style.color = '#bdbdbd';
 
   try {
-    const res = await fetch('https://remix-nexus-production.up.railway.app/api/me/avatar', {
+    const res = await fetch('https://remix-nexus-bgz9.onrender.com/api/me/avatar', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -120,7 +120,7 @@ usernameForm.addEventListener('submit', async (e) => {
   usernameMessage.style.color = '#bdbdbd';
 
   try {
-    const res = await fetch('https://remix-nexus-production.up.railway.app/api/me/username', {
+    const res = await fetch('https://remix-nexus-bgz9.onrender.com/api/me/username', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -181,7 +181,7 @@ passwordForm.addEventListener('submit', async (e) => {
   passwordMessage.style.color = '#bdbdbd';
 
   try {
-    const res = await fetch('https://remix-nexus-production.up.railway.app/api/me/password', {
+    const res = await fetch('https://remix-nexus-bgz9.onrender.com/api/me/password', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
